@@ -13,7 +13,8 @@ from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 
 
-HEADER_RE = re.compile(r"^\s*(?P<name>.+?)\s+(?P<time>(?:\d{4}-\d{2}-\d{2}\s+)?\d{2}:\d{2}:\d{2})\s*$")
+NAME_FIRST_HEADER_RE = re.compile(r"^\s*(?P<name>.+?)\s+(?P<time>(?:\d{4}-\d{2}-\d{2}\s+)?\d{2}:\d{2}:\d{2})\s*$")
+TIME_FIRST_HEADER_RE = re.compile(r"^\s*(?P<time>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(?P<name>.+?)\s*$")
 TIME_ONLY_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 TRAILING_QQ_RE = re.compile(r"^(?P<name>.*?)\s*[\(（](?P<qq>\d+)[\)）]\s*$")
 
@@ -67,7 +68,7 @@ def clean_hex(value: str) -> str:
 
 def decode_upload(uploaded_file) -> str:
     data = uploaded_file.getvalue()
-    for encoding in ("utf-8-sig", "utf-8", "gb18030"):
+    for encoding in ("utf-8-sig", "utf-8", "utf-16", "utf-16le", "utf-16be", "gb18030"):
         try:
             return data.decode(encoding)
         except UnicodeDecodeError:
@@ -83,7 +84,7 @@ def sortable_timestamp(value: str, day_offset: int = 0) -> tuple[int, int, int, 
 
 
 def parse_header(header: str) -> tuple[str, str, str]:
-    match = HEADER_RE.match(header)
+    match = TIME_FIRST_HEADER_RE.match(header) or NAME_FIRST_HEADER_RE.match(header)
     if not match:
         raise ValueError(f"无法解析记录开头：{header}")
     name = re.sub(r"\s+", " ", match.group("name").strip())
@@ -130,7 +131,11 @@ def should_keep_record(content: str, options: OutputOptions) -> bool:
 def read_records(raw: str, filename: str, file_index: int, options: OutputOptions) -> list[ChatRecord]:
     raw = raw.replace("\r\n", "\n").replace("\r", "\n")
     lines = raw.split("\n")
-    starts = [idx for idx, line in enumerate(lines) if HEADER_RE.match(line)]
+    starts = [
+        idx
+        for idx, line in enumerate(lines)
+        if TIME_FIRST_HEADER_RE.match(line) or NAME_FIRST_HEADER_RE.match(line)
+    ]
     if not starts:
         raise ValueError(f"{filename} 没有找到符合格式的聊天记录开头。")
 
