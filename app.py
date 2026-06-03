@@ -15,6 +15,7 @@ from docx.shared import Pt, RGBColor
 
 NAME_FIRST_HEADER_RE = re.compile(r"^\s*(?P<name>.+?)\s+(?P<time>(?:\d{4}-\d{2}-\d{2}\s+)?\d{2}:\d{2}:\d{2})\s*$")
 TIME_FIRST_HEADER_RE = re.compile(r"^\s*(?P<time>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(?P<name>.+?)\s*$")
+INLINE_HEADER_RE = re.compile(r"^\s*(?P<time>(?:\d{4}-\d{2}-\d{2}\s+)?\d{2}:\d{2}:\d{2})\s+<(?P<name>[^>]+)>\s*(?P<content>.*)$")
 TIME_ONLY_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 TRAILING_QQ_RE = re.compile(r"^(?P<name>.*?)\s*[\(（](?P<qq>\d+)[\)）]\s*$")
 
@@ -84,7 +85,8 @@ def sortable_timestamp(value: str, day_offset: int = 0) -> tuple[int, int, int, 
 
 
 def parse_header(header: str) -> tuple[str, str, str]:
-    match = TIME_FIRST_HEADER_RE.match(header) or NAME_FIRST_HEADER_RE.match(header)
+    inline_match = INLINE_HEADER_RE.match(header)
+    match = inline_match or TIME_FIRST_HEADER_RE.match(header) or NAME_FIRST_HEADER_RE.match(header)
     if not match:
         raise ValueError(f"无法解析记录开头：{header}")
     name = re.sub(r"\s+", " ", match.group("name").strip())
@@ -94,6 +96,14 @@ def parse_header(header: str) -> tuple[str, str, str]:
         name = re.sub(r"\s+", " ", qq_match.group("name").strip())
         qq = qq_match.group("qq")
     return name, qq, match.group("time")
+
+
+def parse_inline_header(line: str) -> tuple[str, str, str, str] | None:
+    match = INLINE_HEADER_RE.match(line)
+    if not match:
+        return None
+    name = re.sub(r"\s+", " ", match.group("name").strip())
+    return name, "", match.group("time"), match.group("content")
 
 
 def format_record(name: str, qq: str, time_text: str, content: str, options: OutputOptions) -> str:
@@ -134,7 +144,7 @@ def read_records(raw: str, filename: str, file_index: int, options: OutputOption
     starts = [
         idx
         for idx, line in enumerate(lines)
-        if TIME_FIRST_HEADER_RE.match(line) or NAME_FIRST_HEADER_RE.match(line)
+        if INLINE_HEADER_RE.match(line) or TIME_FIRST_HEADER_RE.match(line) or NAME_FIRST_HEADER_RE.match(line)
     ]
     if not starts:
         raise ValueError(f"{filename} 没有找到符合格式的聊天记录开头。")
@@ -148,7 +158,13 @@ def read_records(raw: str, filename: str, file_index: int, options: OutputOption
         while block_lines and block_lines[-1] == "":
             block_lines.pop()
 
-        name, qq, time_text = parse_header(block_lines[0])
+        inline_parts = parse_inline_header(block_lines[0])
+        if inline_parts is None:
+            name, qq, time_text = parse_header(block_lines[0])
+            content_lines = block_lines[1:]
+        else:
+            name, qq, time_text, first_content = inline_parts
+            content_lines = [first_content, *block_lines[1:]]
         if TIME_ONLY_RE.match(time_text):
             time_key = tuple(int(part) for part in time_text.split(":"))
             if previous_time_key is not None and time_key < previous_time_key:
@@ -157,7 +173,7 @@ def read_records(raw: str, filename: str, file_index: int, options: OutputOption
         else:
             previous_time_key = None
         timestamp = sortable_timestamp(time_text, day_offset)
-        content = "\n".join(block_lines[1:])
+        content = "\n".join(content_lines).strip("\n")
         if not should_keep_record(content, options):
             continue
 
