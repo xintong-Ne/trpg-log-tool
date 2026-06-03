@@ -403,11 +403,11 @@ def preview_records(
 
 
 def main() -> None:
-    st.set_page_config(page_title="跑团 Log 合并工具", page_icon="📄", layout="wide")
+    st.set_page_config(page_title="跑团 Log 整理工具", page_icon="📄", layout="wide")
     st.markdown(
         """
         <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:0.5rem;">
-            <h1 style="margin:0;">跑团 Log 合并工具</h1>
+            <h1 style="margin:0;">跑团 Log 整理工具</h1>
             <span style="font-size:0.9rem;color:#6b7280;">by 仿生橘猫</span>
         </div>
         """,
