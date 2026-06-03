@@ -13,10 +13,16 @@ from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 
 
-NAME_FIRST_HEADER_RE = re.compile(r"^\s*(?P<name>.+?)\s+(?P<time>(?:\d{4}-\d{2}-\d{2}\s+)?\d{2}:\d{2}:\d{2})\s*$")
-TIME_FIRST_HEADER_RE = re.compile(r"^\s*(?P<time>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+(?P<name>.+?)\s*$")
-INLINE_HEADER_RE = re.compile(r"^\s*(?P<time>(?:\d{4}-\d{2}-\d{2}\s+)?\d{2}:\d{2}:\d{2})\s+<(?P<name>[^>]+)>\s*(?P<content>.*)$")
-TIME_ONLY_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
+DATE_PATTERN = r"\d{4}[-/]\d{2}[-/]\d{2}"
+TIME_PATTERN = r"\d{2}:\d{2}:\d{2}"
+DATE_TIME_PATTERN = rf"(?:{DATE_PATTERN}(?:\s+{TIME_PATTERN})?|{TIME_PATTERN})"
+
+NAME_FIRST_HEADER_RE = re.compile(rf"^\s*(?P<name>.+?)\s+(?P<time>{DATE_TIME_PATTERN})\s*$")
+TIME_FIRST_HEADER_RE = re.compile(rf"^\s*(?P<time>{DATE_PATTERN}(?:\s+{TIME_PATTERN})?)\s+(?P<name>.+?)\s*$")
+INLINE_HEADER_RE = re.compile(rf"^\s*(?P<time>{DATE_TIME_PATTERN})\s+<(?P<name>[^>]+)>\s*(?P<content>.*)$")
+COLON_INLINE_HEADER_RE = re.compile(rf"^\s*(?P<name>.+?)\s+(?P<time>{DATE_TIME_PATTERN})\s*[：:]\s*(?P<content>.*)$")
+DATE_ONLY_RE = re.compile(rf"^{DATE_PATTERN}$")
+TIME_ONLY_RE = re.compile(rf"^{TIME_PATTERN}$")
 TRAILING_QQ_RE = re.compile(r"^(?P<name>.*?)\s*[\(（](?P<qq>\d+)[\)）]\s*$")
 
 @dataclass
@@ -81,29 +87,31 @@ def sortable_timestamp(value: str, day_offset: int = 0) -> tuple[int, int, int, 
     if TIME_ONLY_RE.match(value):
         hour, minute, second = (int(part) for part in value.split(":"))
         return (1970, 1, 1 + day_offset, hour, minute, second)
-    return tuple(int(part) for part in re.split(r"[- :]", value))
+    parts = [int(part) for part in re.split(r"[-/ :]", value)]
+    if DATE_ONLY_RE.match(value):
+        year, month, day = parts
+        return (year, month, day, 0, 0, 0)
+    return tuple(parts)
 
 
-def parse_header(header: str) -> tuple[str, str, str]:
-    inline_match = INLINE_HEADER_RE.match(header)
-    match = inline_match or TIME_FIRST_HEADER_RE.match(header) or NAME_FIRST_HEADER_RE.match(header)
-    if not match:
-        raise ValueError(f"无法解析记录开头：{header}")
-    name = re.sub(r"\s+", " ", match.group("name").strip())
+def normalize_header_name(raw_name: str) -> tuple[str, str]:
+    name = re.sub(r"\s+", " ", raw_name.strip())
     qq = ""
     qq_match = TRAILING_QQ_RE.match(name)
     if qq_match:
         name = re.sub(r"\s+", " ", qq_match.group("name").strip())
         qq = qq_match.group("qq")
-    return name, qq, match.group("time")
+    return name, qq
 
 
-def parse_inline_header(line: str) -> tuple[str, str, str, str] | None:
-    match = INLINE_HEADER_RE.match(line)
-    if not match:
-        return None
-    name = re.sub(r"\s+", " ", match.group("name").strip())
-    return name, "", match.group("time"), match.group("content")
+def parse_record_start(line: str) -> tuple[str, str, str, str | None] | None:
+    for header_re in (INLINE_HEADER_RE, COLON_INLINE_HEADER_RE, TIME_FIRST_HEADER_RE, NAME_FIRST_HEADER_RE):
+        match = header_re.match(line)
+        if not match:
+            continue
+        name, qq = normalize_header_name(match.group("name"))
+        return name, qq, match.group("time"), match.groupdict().get("content")
+    return None
 
 
 def format_record(name: str, qq: str, time_text: str, content: str, options: OutputOptions) -> str:
@@ -131,7 +139,7 @@ def with_display_name(record: ChatRecord, display_name: str, options: OutputOpti
 
 def should_keep_record(content: str, options: OutputOptions) -> bool:
     stripped = content.strip()
-    if options.remove_image_records and stripped == "[图片]":
+    if options.remove_image_records and (stripped == "[图片]" or stripped.startswith("[CQ:image,file=https:")):
         return False
     if options.remove_bracket_records and stripped.startswith(("（", "(")):
         return False
@@ -144,7 +152,7 @@ def read_records(raw: str, filename: str, file_index: int, options: OutputOption
     starts = [
         idx
         for idx, line in enumerate(lines)
-        if INLINE_HEADER_RE.match(line) or TIME_FIRST_HEADER_RE.match(line) or NAME_FIRST_HEADER_RE.match(line)
+        if parse_record_start(line) is not None
     ]
     if not starts:
         raise ValueError(f"{filename} 没有找到符合格式的聊天记录开头。")
@@ -155,16 +163,17 @@ def read_records(raw: str, filename: str, file_index: int, options: OutputOption
     for record_index, start in enumerate(starts):
         end = starts[record_index + 1] if record_index + 1 < len(starts) else len(lines)
         block_lines = lines[start:end]
-        while block_lines and block_lines[-1] == "":
+        while block_lines and not block_lines[-1].strip():
             block_lines.pop()
 
-        inline_parts = parse_inline_header(block_lines[0])
-        if inline_parts is None:
-            name, qq, time_text = parse_header(block_lines[0])
+        start_parts = parse_record_start(block_lines[0])
+        if start_parts is None:
+            raise ValueError(f"无法解析记录开头：{block_lines[0]}")
+        name, qq, time_text, inline_content = start_parts
+        if inline_content is None:
             content_lines = block_lines[1:]
         else:
-            name, qq, time_text, first_content = inline_parts
-            content_lines = [first_content, *block_lines[1:]]
+            content_lines = [inline_content, *block_lines[1:]]
         if TIME_ONLY_RE.match(time_text):
             time_key = tuple(int(part) for part in time_text.split(":"))
             if previous_time_key is not None and time_key < previous_time_key:
@@ -293,9 +302,6 @@ def build_docx(
         paragraph.paragraph_format.line_spacing = 1.0
         set_paragraph_shading(paragraph, fill_color)
         add_preserved_text(paragraph, record.text, text_color, size, italic)
-        next_item = items[index + 1] if index + 1 < len(items) else None
-        if isinstance(next_item, ChatRecord):
-            add_white_spacer(document)
 
     output = BytesIO()
     document.save(output)
@@ -381,7 +387,6 @@ def preview_records(
             <div class="preview-record" style="background:{fill_color};color:{text_color}{style_suffix};">
                 {text}
             </div>
-            <div class="preview-gap"></div>
             """
         )
 
