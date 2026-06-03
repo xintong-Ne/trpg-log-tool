@@ -1,0 +1,2735 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>COC跑团Log智能播放器</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="COC跑团">
+    <meta name="theme-color" content="#4a90e2">
+    <meta name="description" content="COC跑团Log智能播放器，自动识别地图，角色对话气泡显示">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%234a90e2'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>🎲</text></svg>">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%234a90e2'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='white'>🎲</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+        
+        body {
+            background-color: #f5f7fa;
+            color: #333;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .header {
+            padding: 8px;
+            text-align: center;
+            background-color: #4a90e2;
+            border-bottom: 1px solid #357abd;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            color: white;
+            padding-top: env(safe-area-inset-top, 8px);
+        }
+        
+        .header h1 {
+            font-size: 18px;
+        }
+        
+        .header-btn {
+            padding: 4px 10px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.2s;
+        }
+        
+        .edit-map-btn {
+            background-color: #5cb85c;
+        }
+        
+        .edit-map-btn:hover {
+            background-color: #4cae4c;
+        }
+        
+        .main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        /* 左侧控制面板 */
+        .sidebar {
+            width: 260px;
+            background-color: #e8f0f8;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            flex-shrink: 0;
+            border-right: 1px solid #d0e1f2;
+        }
+        
+        .drop-zone {
+            border: 2px dashed #4a90e2;
+            border-radius: 6px;
+            padding: 15px 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3;
+            background-color: white;
+        }
+        
+        .drop-zone:hover, .drop-zone.active {
+            background-color: rgba(74, 144, 226, 0.05);
+            border-color: #357abd;
+        }
+        
+        .drop-zone p {
+            margin-top: 6px;
+            color: #666;
+            font-size: 12px;
+        }
+        
+        .drop-zone input[type="file"] {
+            display: none;
+        }
+        
+        .map-drop-zone {
+            border: 2px dashed #5cb85c;
+            border-radius: 6px;
+            padding: 10px 6px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3;
+            background-color: white;
+        }
+        
+        .map-drop-zone:hover, .map-drop-zone.active {
+            background-color: rgba(92, 184, 92, 0.05);
+            border-color: #4cae4c;
+        }
+        
+        .map-drop-zone p {
+            margin-top: 4px;
+            color: #666;
+            font-size: 11px;
+        }
+        
+        .map-drop-zone input[type="file"] {
+            display: none;
+        }
+        
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .auto-play-controls {
+            display: flex;
+            gap: 6px;
+        }
+        
+        .auto-play-btn {
+            flex: 2;
+        }
+        
+        .speed-select {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #d0e1f2;
+            border-radius: 4px;
+            font-size: 12px;
+            background-color: white;
+        }
+        
+        button {
+            padding: 10px;
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        button:hover {
+            background-color: #357abd;
+        }
+        
+        button:disabled {
+            background-color: #999;
+            cursor: not-allowed;
+        }
+        
+        button.playing {
+            background-color: #d9534f;
+        }
+        
+        button.playing:hover {
+            background-color: #c9302c;
+        }
+        
+        .progress {
+            margin-top: 6px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+        
+        .progress-input {
+            width: 50px;
+            padding: 2px 4px;
+            border: 1px solid #d0e1f2;
+            border-radius: 3px;
+            text-align: center;
+            font-size: 12px;
+        }
+        
+        .map-info {
+            margin-top: 10px;
+            padding: 8px;
+            background-color: rgba(92, 184, 92, 0.1);
+            border-radius: 4px;
+            border: 1px solid #5cb85c;
+        }
+        
+        .map-info h3 {
+            margin-bottom: 6px;
+            color: #5cb85c;
+            font-size: 14px;
+        }
+        
+        .map-info p {
+            font-size: 11px;
+            color: #555;
+            line-height: 1.4;
+        }
+        
+        .tips {
+            margin-top: 10px;
+            padding: 8px;
+            background-color: rgba(240, 173, 78, 0.1);
+            border-radius: 4px;
+            border: 1px solid #f0ad4e;
+        }
+        
+        .tips h3 {
+            margin-bottom: 6px;
+            color: #f0ad4e;
+            font-size: 14px;
+        }
+        
+        .tips p {
+            font-size: 11px;
+            color: #555;
+            line-height: 1.4;
+        }
+        
+        .location-list {
+            margin-top: 10px;
+        }
+        
+        .location-list h3 {
+            margin-bottom: 6px;
+            color: #4a90e2;
+            font-size: 14px;
+        }
+        
+        .location-item {
+            padding: 4px 6px;
+            background-color: white;
+            border-radius: 3px;
+            margin-bottom: 3px;
+            font-size: 12px;
+            border: 1px solid #d0e1f2;
+        }
+        
+        /* 存档系统样式 */
+        .save-system {
+            margin-top: 10px;
+            padding: 8px;
+            background-color: rgba(74, 144, 226, 0.1);
+            border-radius: 4px;
+            border: 1px solid #4a90e2;
+        }
+        
+        .save-system h3 {
+            margin-bottom: 6px;
+            color: #4a90e2;
+            font-size: 14px;
+        }
+        
+        .save-buttons {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        
+        .save-buttons button {
+            flex: 1;
+            padding: 8px;
+            font-size: 12px;
+        }
+        
+        .save-btn {
+            background-color: #5cb85c;
+        }
+        
+        .save-btn:hover {
+            background-color: #4cae4c;
+        }
+        
+        .load-btn {
+            background-color: #f0ad4e;
+        }
+        
+        .load-btn:hover {
+            background-color: #ec971f;
+        }
+        
+        .save-slots {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        
+        .save-slot {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px;
+            background-color: white;
+            border-radius: 4px;
+            border: 1px solid #d0e1f2;
+            font-size: 11px;
+        }
+        
+        .save-slot.empty {
+            color: #999;
+            font-style: italic;
+        }
+        
+        .save-slot-info {
+            flex: 1;
+        }
+        
+        .save-slot-time {
+            font-size: 10px;
+            color: #777;
+        }
+        
+        .save-slot-actions {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .save-slot-btn {
+            padding: 2px 6px;
+            font-size: 10px;
+        }
+        
+        /* 地图编辑器弹窗 */
+        .map-editor-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .map-editor {
+            width: 90%;
+            height: 90%;
+            background-color: white;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+        
+        .editor-header {
+            padding: 12px;
+            background-color: #4a90e2;
+            border-bottom: 1px solid #357abd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+        }
+        
+        .editor-header h2 {
+            font-size: 16px;
+        }
+        
+        .editor-controls {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .editor-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        
+        .editor-btn.green {
+            background-color: #5cb85c;
+        }
+        
+        .editor-btn.green:hover {
+            background-color: #4cae4c;
+        }
+        
+        .editor-btn.orange {
+            background-color: #f0ad4e;
+        }
+        
+        .editor-btn.orange:hover {
+            background-color: #ec971f;
+        }
+        
+        .editor-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .editor-sidebar {
+            width: 220px;
+            background-color: #e8f0f8;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            border-right: 1px solid #d0e1f2;
+        }
+        
+        .editor-sidebar h3 {
+            font-size: 14px;
+            color: #4a90e2;
+        }
+        
+        .room-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .room-list-item {
+            padding: 6px;
+            background-color: white;
+            border-radius: 4px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            border: 1px solid #d0e1f2;
+        }
+        
+        .room-list-item:hover {
+            background-color: #f0f7ff;
+        }
+        
+        .room-list-item.selected {
+            border: 2px solid #4a90e2;
+            background-color: #f0f7ff;
+        }
+        
+        .room-list-buttons {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .edit-room-btn {
+            background-color: #f0ad4e;
+            padding: 2px 6px;
+            font-size: 10px;
+        }
+        
+        .edit-room-btn:hover {
+            background-color: #ec971f;
+        }
+        
+        .delete-room-btn {
+            background-color: #d9534f;
+            padding: 2px 6px;
+            font-size: 10px;
+        }
+        
+        .delete-room-btn:hover {
+            background-color: #c9302c;
+        }
+        
+        /* 大小调整控件样式 */
+        .size-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 10px;
+            background-color: white;
+            border-radius: 6px;
+            border: 2px solid #4a90e2;
+            box-shadow: 0 2px 4px rgba(74, 144, 226, 0.1);
+        }
+        
+        .size-controls h4 {
+            font-size: 13px;
+            color: #4a90e2;
+            margin-bottom: 4px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .size-buttons {
+            display: flex;
+            gap: 8px;
+            justify-content: space-between;
+        }
+        
+        .size-btn {
+            flex: 1;
+            padding: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 6px;
+        }
+        
+        .size-btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .size-info {
+            font-size: 12px;
+            color: #333;
+            text-align: center;
+            font-weight: bold;
+            background-color: #f5f7fa;
+            padding: 4px;
+            border-radius: 4px;
+        }
+        
+        .editor-map-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background-color: #f9f9f9;
+        }
+        
+        /* 编辑器房间样式 - 重写以解决交互问题 */
+        .editor-room {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            background-color: rgba(74, 144, 226, 0.1);
+            border: 2px solid #4a90e2;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: grab;
+            user-select: none;
+            box-sizing: border-box;
+            z-index: 1;
+            min-width: 50px;
+            min-height: 30px;
+        }
+        
+        .editor-room.selected {
+            border: 3px solid #d9534f;
+            z-index: 2;
+            background-color: rgba(217, 83, 79, 0.1);
+            box-shadow: 0 0 10px rgba(217, 83, 79, 0.3);
+        }
+        
+        .editor-room:active {
+            cursor: grabbing;
+        }
+        
+        .editor-room-name {
+            font-size: 12px;
+            color: #333;
+            pointer-events: none;
+            font-weight: bold;
+            text-align: center;
+            padding: 2px;
+        }
+        
+        .resize-handle {
+            position: absolute;
+            right: -8px;
+            bottom: -8px;
+            width: 18px;
+            height: 18px;
+            background-color: #d9534f;
+            border-radius: 50%;
+            cursor: se-resize;
+            z-index: 3;
+            border: 2px solid white;
+            box-shadow: 0 0 4px rgba(0,0,0,0.3);
+        }
+        
+        /* 右侧主区域 */
+        .main-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        /* 地图区域 */
+        .map-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background-color: #f9f9f9;
+        }
+        
+        /* 自动生成的SVG地图 */
+        .auto-map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .map-room {
+            fill: rgba(74, 144, 226, 0.1);
+            stroke: #4a90e2;
+            stroke-width: 2;
+            rx: 4;
+        }
+        
+        .map-room-name {
+            fill: #333;
+            font-size: 10px;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            pointer-events: none;
+        }
+        
+        .map-line {
+            stroke: #999;
+            stroke-width: 1;
+            stroke-dasharray: 5,5;
+        }
+        
+        /* 地图上的角色 - 可拖拽 */
+        .map-character {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: grab;
+            user-select: none;
+            touch-action: none;
+        }
+        
+        .map-character:active {
+            cursor: grabbing;
+        }
+        
+        .map-character-name {
+            background-color: white;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+            white-space: nowrap;
+            border: 1px solid #ccc;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .map-character.active .map-character-name {
+            transform: scale(1.15);
+            box-shadow: 0 0 8px rgba(74, 144, 226, 0.6);
+            border-color: #4a90e2;
+        }
+        
+        /* 智能防重叠对话框 */
+        .map-speech-bubble {
+            position: absolute;
+            background-color: white;
+            color: #333;
+            padding: 6px 8px;
+            border-radius: 6px;
+            max-width: 160px;
+            min-width: 70px;
+            text-align: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            z-index: 11;
+            border: 2px solid transparent;
+            font-size: 11px;
+            line-height: 1.4;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        .map-speech-bubble.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        /* 对话框小尾巴 */
+        .map-speech-bubble::after {
+            content: '';
+            position: absolute;
+            border: 7px solid transparent;
+        }
+        
+        /* 不同位置的对话框 */
+        .bubble-top {
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(8px);
+            margin-bottom: 5px;
+        }
+        
+        .bubble-top.active {
+            transform: translateX(-50%) translateY(0);
+        }
+        
+        .bubble-top::after {
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border-top-color: inherit;
+        }
+        
+        .bubble-bottom {
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(-8px);
+            margin-top: 5px;
+        }
+        
+        .bubble-bottom.active {
+            transform: translateX(-50%) translateY(0);
+        }
+        
+        .bubble-bottom::after {
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border-bottom-color: inherit;
+        }
+        
+        .bubble-left {
+            right: 100%;
+            top: 50%;
+            transform: translateY(-50%) translateX(8px);
+            margin-right: 5px;
+        }
+        
+        .bubble-left.active {
+            transform: translateY(-50%) translateX(0);
+        }
+        
+        .bubble-left::after {
+            left: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            border-left-color: inherit;
+        }
+        
+        .bubble-right {
+            left: 100%;
+            top: 50%;
+            transform: translateY(-50%) translateX(-8px);
+            margin-left: 5px;
+        }
+        
+        .bubble-right.active {
+            transform: translateY(-50%) translateX(0);
+        }
+        
+        .bubble-right::after {
+            right: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            border-right-color: inherit;
+        }
+        
+        /* 底部控制条 */
+        .bottom-bar {
+            background-color: #e8f0f8;
+            padding: 8px;
+            padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-top: 1px solid #d0e1f2;
+            flex-shrink: 0;
+            font-size: 13px;
+            color: #555;
+        }
+        
+        /* 提示信息 */
+        .hint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #999;
+            font-size: 13px;
+            z-index: 1;
+            line-height: 2;
+            padding: 0 20px;
+        }
+        
+        .hint kbd {
+            background-color: #e8f0f8;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 11px;
+            border: 1px solid #d0e1f2;
+        }
+        
+        /* 角色颜色配置 */
+        .kp { color: #d9534f; border-color: #d9534f; }
+        .pl1 { color: #5cb85c; border-color: #5cb85c; }
+        .pl2 { color: #4a90e2; border-color: #4a90e2; }
+        .pl3 { color: #f0ad4e; border-color: #f0ad4e; }
+        .pl4 { color: #9b59b6; border-color: #9b59b6; }
+        .pl5 { color: #e67e22; border-color: #e67e22; }
+        .pl6 { color: #1abc9c; border-color: #1abc9c; }
+        
+        /* 滚动条美化 */
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #e8f0f8;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #4a90e2;
+            border-radius: 2px;
+        }
+        
+        /* 手机端响应式适配 */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 45vh;
+                padding: 8px;
+                gap: 8px;
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: space-between;
+                border-right: none;
+                border-bottom: 1px solid #d0e1f2;
+            }
+            
+            .drop-zone {
+                width: 48%;
+                padding: 10px 6px;
+            }
+            
+            .map-drop-zone {
+                width: 48%;
+                padding: 10px 6px;
+            }
+            
+            .controls {
+                width: 100%;
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            
+            .controls button {
+                flex: 1;
+                padding: 10px 6px;
+                font-size: 12px;
+            }
+            
+            .auto-play-controls {
+                width: 100%;
+            }
+            
+            .progress {
+                width: 100%;
+                margin: 0;
+                order: 1;
+            }
+            
+            .save-system {
+                width: 100%;
+                order: 2;
+                margin-top: 5px;
+            }
+            
+            .map-info {
+                width: 48%;
+                order: 3;
+                margin-top: 5px;
+            }
+            
+            .tips {
+                width: 48%;
+                order: 4;
+                margin-top: 5px;
+            }
+            
+            .location-list {
+                width: 100%;
+                margin-top: 5px;
+                order: 5;
+                max-height: 40px;
+                overflow-y: auto;
+            }
+            
+            .map-speech-bubble {
+                max-width: 120px;
+                font-size: 10px;
+                padding: 5px 6px;
+            }
+            
+            .map-character-name {
+                font-size: 9px;
+                padding: 1px 3px;
+            }
+            
+            .map-room-name {
+                font-size: 8px;
+            }
+            
+            .bottom-bar {
+                padding: 6px;
+                padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+                font-size: 12px;
+            }
+            
+            .hint {
+                font-size: 12px;
+            }
+            
+            .map-editor {
+                width: 100%;
+                height: 100%;
+                border-radius: 0;
+            }
+            
+            .editor-content {
+                flex-direction: column;
+            }
+            
+            .editor-sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 250px;
+                flex-direction: row;
+                flex-wrap: wrap;
+                border-right: none;
+                border-bottom: 1px solid #d0e1f2;
+            }
+            
+            .editor-sidebar h3 {
+                width: 100%;
+            }
+            
+            .room-list {
+                width: 100%;
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 6px;
+                max-height: 80px;
+            }
+            
+            .room-list-item {
+                width: calc(33% - 4px);
+            }
+            
+            .size-controls {
+                width: 100%;
+                order: 3;
+                margin-top: 8px;
+            }
+            
+            .size-buttons {
+                gap: 12px;
+            }
+            
+            .size-btn {
+                padding: 12px;
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>COC跑团Log智能播放器</h1>
+        <button class="header-btn edit-map-btn" id="editMapBtn" disabled>✏️ 编辑地图</button>
+    </div>
+    
+    <div class="main-container">
+        <!-- 左侧控制面板 -->
+        <div class="sidebar">
+            <div class="drop-zone" id="logDropZone">
+                <div>📄</div>
+                <p>导入跑团Log<br>(.docx/.txt)</p>
+                <input type="file" id="logInput" accept=".docx,.txt">
+            </div>
+            
+            <div class="map-drop-zone" id="mapDropZone">
+                <div>🗺️</div>
+                <p>导入模组地图<br>(.cocmap)</p>
+                <input type="file" id="mapInput" accept=".cocmap">
+            </div>
+            
+            <div class="controls">
+                <button id="prevBtn" disabled>上一句</button>
+                <button id="nextBtn" disabled>下一句</button>
+                <button id="restartBtn" disabled>重开</button>
+                <div class="auto-play-controls">
+                    <button id="autoPlayBtn" disabled class="auto-play-btn">▶️ 自动播放</button>
+                    <select id="speedSelect" class="speed-select">
+                        <option value="2000">0.5x</option>
+                        <option value="1000" selected>1x</option>
+                        <option value="667">1.5x</option>
+                        <option value="500">2x</option>
+                        <option value="333">3x</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="progress" id="progress">
+                进度: <input type="number" id="progressInput" class="progress-input" min="1" value="1" disabled> / <span id="totalProgress">0</span>
+            </div>
+            
+            <!-- 存档系统 -->
+            <div class="save-system" id="saveSystem">
+                <h3>💾 进度存档</h3>
+                <div class="save-buttons">
+                    <button class="save-btn" id="saveBtn" disabled>快速存档</button>
+                    <button class="load-btn" id="loadBtn" disabled>快速读档</button>
+                </div>
+                <div class="save-slots" id="saveSlots">
+                    <!-- 存档槽位动态生成 -->
+                </div>
+            </div>
+            
+            <div class="map-info" id="mapInfo" style="display: none;">
+                <h3>✅ 已加载地图</h3>
+                <p id="mapDescription"></p>
+            </div>
+            
+            <div class="tips">
+                <h3>💡 操作提示</h3>
+                <p>• 用鼠标/手指拖动角色到任意位置<br>
+                • 点击地图任意位置播放下一句<br>
+                • 按空格/→下一句，←上一句<br>
+                • 在进度框输入数字直接跳转<br>
+                • 点击顶部"编辑地图"修改房间<br>
+                • 导出的.cocmap可分享给他人<br>
+                • 点击"快速存档"保存当前进度<br>
+                • 点击"快速读档"恢复上次进度</p>
+            </div>
+            
+            <div class="location-list" id="locationList">
+                <h3>地图包含位置</h3>
+                <p style="color: #777; font-size: 11px;">导入Log或地图后显示</p>
+            </div>
+        </div>
+        
+        <!-- 右侧地图区域 -->
+        <div class="main-area">
+            <div class="map-container" id="mapContainer">
+                <div class="hint">
+                    请先导入跑团Log<br><br>
+                    ✅ 自动识别KP的"建筑图："格式<br>
+                    ✅ 可导入/导出.cocmap地图文件<br>
+                    ✅ 角色可以自由拖动<br>
+                    ✅ 谁说话谁头顶冒对话框<br>
+                    ✅ 支持自动播放，5档速度可调<br>
+                    ✅ 新增进度存档和读取功能<br>
+                    ✅ 输入数字直接跳转到指定进度<br>
+                    ✅ 地图编辑器交互全面优化<br><br>
+                    点击"下一句"开始播放
+                </div>
+                <svg class="auto-map" id="autoMap"></svg>
+            </div>
+            
+            <div class="bottom-bar">
+                <span id="currentSpeaker">准备开始</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 地图编辑器弹窗 -->
+    <div class="map-editor-overlay" id="mapEditorOverlay">
+        <div class="map-editor">
+            <div class="editor-header">
+                <h2>🗺️ 地图编辑器</h2>
+                <div class="editor-controls">
+                    <button class="editor-btn green" id="addRoomBtn">➕ 添加房间</button>
+                    <button class="editor-btn orange" id="exportMapBtn">💾 导出地图</button>
+                    <button class="editor-btn green" id="saveMapBtn">✅ 应用地图</button>
+                    <button class="editor-btn" id="closeEditorBtn">❌ 关闭</button>
+                </div>
+            </div>
+            <div class="editor-content">
+                <div class="editor-sidebar">
+                    <h3>房间列表</h3>
+                    <div class="room-list" id="roomList">
+                        <!-- 房间列表动态生成 -->
+                    </div>
+                    
+                    <!-- 大小调整控件 -->
+                    <div class="size-controls" id="sizeControls" style="display: none;">
+                        <h4>📐 精确调整房间大小</h4>
+                        <div class="size-buttons">
+                            <button class="editor-btn size-btn" id="decreaseWidthBtn">←</button>
+                            <button class="editor-btn size-btn" id="increaseWidthBtn">→</button>
+                        </div>
+                        <div class="size-info" id="sizeInfo">选中房间后可调整大小</div>
+                        <div class="size-buttons">
+                            <button class="editor-btn size-btn" id="decreaseHeightBtn">↑</button>
+                            <button class="editor-btn size-btn" id="increaseHeightBtn">↓</button>
+                        </div>
+                    </div>
+                    
+                    <p style="font-size: 11px; color: #666; margin-top: 10px;">
+                        💡 操作说明：<br>
+                        • 点击房间列表项或地图上的房间选中<br>
+                        • 选中后房间会变成红色边框<br>
+                        • 双击房间修改名称<br>
+                        • 按住房间任意位置拖动移动<br>
+                        • 拖拽右下角红点自由调整大小<br>
+                        • 使用↑↓←→按钮精确调整宽高<br>
+                        • 长按按钮可以连续调整<br>
+                        • 点击"×"删除房间<br>
+                        • 导出地图可分享给他人
+                    </p>
+                </div>
+                <div class="editor-map-container" id="editorMapContainer">
+                    <!-- 房间会动态生成在这里 -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 全局变量
+        let allMessages = [];
+        let currentIndex = -1;
+        let characters = {};
+        let mapRooms = {}; // 所有房间的坐标 { 房间名: [x, y, w, h] }
+        let characterBubblePositions = {}; // 每个角色的对话框位置
+        let kpMapFound = false; // 是否找到了KP的地图描述
+        let kpMapText = ""; // KP的地图原文
+        let currentLogFileName = ""; // 当前加载的Log文件名
+        
+        // 自动播放相关变量
+        let autoPlayInterval = null;
+        let isAutoPlaying = false;
+        
+        // 通用拖拽变量 - 重写以解决交互问题
+        let isDragging = false;
+        let draggedElement = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+        let dragContainer = null;
+        let dragStartTime = 0;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        
+        // 角色颜色配置
+        const characterColors = ['kp', 'pl1', 'pl2', 'pl3', 'pl4', 'pl5', 'pl6'];
+        
+        // 地图标题关键词
+        const mapTitleKeywords = [
+            /^(建筑图|地图|平面图|布局图|结构图|楼层图)\s*[:：]\s*$/i
+        ];
+        
+        // 存档相关常量
+        const SAVE_KEY_PREFIX = 'coc_log_player_save_';
+        const MAX_SAVE_SLOTS = 5;
+        
+        // DOM元素
+        const logDropZone = document.getElementById('logDropZone');
+        const logInput = document.getElementById('logInput');
+        const mapDropZone = document.getElementById('mapDropZone');
+        const mapInput = document.getElementById('mapInput');
+        const mapContainer = document.getElementById('mapContainer');
+        const autoMap = document.getElementById('autoMap');
+        const mapInfo = document.getElementById('mapInfo');
+        const mapDescription = document.getElementById('mapDescription');
+        const locationList = document.getElementById('locationList');
+        const progress = document.getElementById('progress');
+        const progressInput = document.getElementById('progressInput');
+        const totalProgress = document.getElementById('totalProgress');
+        const currentSpeaker = document.getElementById('currentSpeaker');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const editMapBtn = document.getElementById('editMapBtn');
+        const autoPlayBtn = document.getElementById('autoPlayBtn');
+        const speedSelect = document.getElementById('speedSelect');
+        
+        // 存档系统DOM元素
+        const saveSystem = document.getElementById('saveSystem');
+        const saveBtn = document.getElementById('saveBtn');
+        const loadBtn = document.getElementById('loadBtn');
+        const saveSlots = document.getElementById('saveSlots');
+        
+        // 地图编辑器DOM元素
+        const mapEditorOverlay = document.getElementById('mapEditorOverlay');
+        const editorMapContainer = document.getElementById('editorMapContainer');
+        const roomList = document.getElementById('roomList');
+        const addRoomBtn = document.getElementById('addRoomBtn');
+        const exportMapBtn = document.getElementById('exportMapBtn');
+        const saveMapBtn = document.getElementById('saveMapBtn');
+        const closeEditorBtn = document.getElementById('closeEditorBtn');
+        
+        // 大小调整控件DOM元素
+        const sizeControls = document.getElementById('sizeControls');
+        const increaseWidthBtn = document.getElementById('increaseWidthBtn');
+        const decreaseWidthBtn = document.getElementById('decreaseWidthBtn');
+        const increaseHeightBtn = document.getElementById('increaseHeightBtn');
+        const decreaseHeightBtn = document.getElementById('decreaseHeightBtn');
+        const sizeInfo = document.getElementById('sizeInfo');
+        
+        // 大小调整相关变量
+        let sizeInterval = null;
+        const SIZE_STEP = 0.5; // 每次调整的百分比
+        const MIN_SIZE = 3; // 最小尺寸百分比
+        const MAX_SIZE = 50; // 最大尺寸百分比
+        
+        // ========================================
+        // 通用拖拽函数 - 完全重写，解决交互不灵敏问题
+        // ========================================
+        function addDragEvents(element, container) {
+            // 鼠标事件
+            element.addEventListener('mousedown', (e) => startDrag(e, element, container));
+            // 触摸事件 - 添加passive: false以支持preventDefault
+            element.addEventListener('touchstart', (e) => startDrag(e, element, container), { passive: false });
+            
+            // 双击事件 - 单独处理，避免与拖动冲突
+            element.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const roomName = element.dataset.roomName;
+                if (roomName) {
+                    renameRoom(roomName);
+                }
+            });
+        }
+        
+        function startDrag(e, element, container) {
+            // 阻止默认行为和事件冒泡
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // 如果点击的是调整大小的手柄，不启动拖动
+            if (e.target.classList.contains('resize-handle')) {
+                return;
+            }
+            
+            isDragging = true;
+            draggedElement = element;
+            dragContainer = container;
+            dragStartTime = Date.now();
+            
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            
+            dragStartX = clientX;
+            dragStartY = clientY;
+            
+            const rect = draggedElement.getBoundingClientRect();
+            const containerRect = dragContainer.getBoundingClientRect();
+            
+            // 计算偏移量 - 从元素中心开始计算
+            dragOffsetX = clientX - rect.left - rect.width/2;
+            dragOffsetY = clientY - rect.top - rect.height/2;
+            
+            // 添加全局事件监听
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', endDrag);
+            document.addEventListener('touchmove', drag, { passive: false });
+            document.addEventListener('touchend', endDrag);
+            document.addEventListener('touchcancel', endDrag);
+        }
+        
+        function drag(e) {
+            if (!isDragging || !draggedElement) return;
+            
+            e.preventDefault();
+            
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            
+            const containerRect = dragContainer.getBoundingClientRect();
+            const x = ((clientX - containerRect.left - dragOffsetX) / containerRect.width) * 100;
+            const y = ((clientY - containerRect.top - dragOffsetY) / containerRect.height) * 100;
+            
+            // 限制在容器内
+            const clampedX = Math.max(2, Math.min(98, x));
+            const clampedY = Math.max(2, Math.min(98, y));
+            
+            draggedElement.style.left = clampedX + '%';
+            draggedElement.style.top = clampedY + '%';
+        }
+        
+        function endDrag(e) {
+            if (!isDragging) return;
+            
+            const dragEndTime = Date.now();
+            const clientX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX);
+            const clientY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY);
+            
+            // 判断是否是点击（拖动时间短且移动距离小）
+            const dragDuration = dragEndTime - dragStartTime;
+            const dragDistance = Math.sqrt(Math.pow(clientX - dragStartX, 2) + Math.pow(clientY - dragStartY, 2));
+            
+            if (dragDuration < 200 && dragDistance < 5) {
+                // 这是一个点击事件，选中房间
+                const roomName = draggedElement.dataset.roomName;
+                if (roomName) {
+                    selectRoom(roomName);
+                }
+            }
+            
+            // 重置拖动状态
+            isDragging = false;
+            draggedElement = null;
+            dragContainer = null;
+            
+            // 移除全局事件监听
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', endDrag);
+            document.removeEventListener('touchmove', drag);
+            document.removeEventListener('touchend', endDrag);
+            document.removeEventListener('touchcancel', endDrag);
+        }
+        
+        // ========================================
+        // 进度跳转功能
+        // ========================================
+        function jumpToProgress(index) {
+            if (allMessages.length === 0) return;
+            
+            // 转换为0-based索引
+            const targetIndex = index - 1;
+            
+            if (targetIndex < 0 || targetIndex >= allMessages.length) {
+                alert(`请输入1到${allMessages.length}之间的数字`);
+                progressInput.value = currentIndex + 1;
+                return;
+            }
+            
+            // 停止自动播放
+            stopAutoPlay();
+            
+            // 隐藏当前对话框
+            if (currentIndex >= 0) {
+                const currMsg = allMessages[currentIndex];
+                hideBubble(currMsg.name);
+            }
+            
+            // 跳转到目标进度
+            currentIndex = targetIndex;
+            const msg = allMessages[currentIndex];
+            
+            showBubble(msg.name, msg.content);
+            currentSpeaker.textContent = `${msg.name} 正在说话`;
+            updateProgress();
+        }
+        
+        // ========================================
+        // 存档系统核心功能
+        // ========================================
+        
+        // 初始化存档槽位显示
+        function initSaveSlots() {
+            saveSlots.innerHTML = '';
+            
+            for (let i = 1; i <= MAX_SAVE_SLOTS; i++) {
+                const slotKey = SAVE_KEY_PREFIX + i;
+                const saveData = localStorage.getItem(slotKey);
+                
+                const slotDiv = document.createElement('div');
+                slotDiv.className = 'save-slot';
+                slotDiv.dataset.slot = i;
+                
+                if (saveData) {
+                    try {
+                        const data = JSON.parse(saveData);
+                        const saveTime = new Date(data.saveTime);
+                        const timeStr = saveTime.toLocaleString();
+                        
+                        slotDiv.innerHTML = `
+                            <div class="save-slot-info">
+                                <div>存档 ${i}: ${data.logFileName || '未知Log'}</div>
+                                <div class="save-slot-time">进度: ${data.currentIndex + 1}/${data.totalMessages} | ${timeStr}</div>
+                            </div>
+                            <div class="save-slot-actions">
+                                <button class="editor-btn save-slot-btn" data-slot="${i}" data-action="load">读取</button>
+                                <button class="editor-btn save-slot-btn delete-room-btn" data-slot="${i}" data-action="delete">删除</button>
+                            </div>
+                        `;
+                    } catch (e) {
+                        slotDiv.className += ' empty';
+                        slotDiv.innerHTML = `存档 ${i}: 损坏`;
+                    }
+                } else {
+                    slotDiv.className += ' empty';
+                    slotDiv.innerHTML = `存档 ${i}: 空`;
+                }
+                
+                saveSlots.appendChild(slotDiv);
+            }
+            
+            // 绑定存档槽位按钮事件
+            document.querySelectorAll('.save-slot-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const slot = parseInt(e.target.dataset.slot);
+                    const action = e.target.dataset.action;
+                    
+                    if (action === 'load') {
+                        loadGame(slot);
+                    } else if (action === 'delete') {
+                        deleteSave(slot);
+                    }
+                });
+            });
+        }
+        
+        // 快速存档（保存到第一个空槽位或覆盖第一个槽位）
+        function quickSave() {
+            if (allMessages.length === 0) return;
+            
+            // 找到第一个空槽位
+            let saveSlot = 1;
+            for (let i = 1; i <= MAX_SAVE_SLOTS; i++) {
+                if (!localStorage.getItem(SAVE_KEY_PREFIX + i)) {
+                    saveSlot = i;
+                    break;
+                }
+            }
+            
+            saveGame(saveSlot);
+        }
+        
+        // 快速读档（读取最近的存档）
+        function quickLoad() {
+            let latestSlot = null;
+            let latestTime = 0;
+            
+            for (let i = 1; i <= MAX_SAVE_SLOTS; i++) {
+                const saveData = localStorage.getItem(SAVE_KEY_PREFIX + i);
+                if (saveData) {
+                    try {
+                        const data = JSON.parse(saveData);
+                        if (data.saveTime > latestTime) {
+                            latestTime = data.saveTime;
+                            latestSlot = i;
+                        }
+                    } catch (e) {}
+                }
+            }
+            
+            if (latestSlot) {
+                loadGame(latestSlot);
+            } else {
+                alert('没有找到任何存档！');
+            }
+        }
+        
+        // 保存游戏
+        function saveGame(slot) {
+            if (allMessages.length === 0) {
+                alert('请先导入跑团Log！');
+                return;
+            }
+            
+            // 收集所有角色的位置
+            const characterPositions = {};
+            Object.keys(characters).forEach(charName => {
+                const charEl = document.getElementById(`map-char-${charName}`);
+                if (charEl) {
+                    characterPositions[charName] = {
+                        left: charEl.style.left,
+                        top: charEl.style.top
+                    };
+                }
+            });
+            
+            // 创建存档数据
+            const saveData = {
+                version: "1.0",
+                saveTime: Date.now(),
+                logFileName: currentLogFileName,
+                currentIndex: currentIndex,
+                totalMessages: allMessages.length,
+                characterPositions: characterPositions,
+                mapRooms: mapRooms,
+                kpMapText: kpMapText,
+                kpMapFound: kpMapFound
+            };
+            
+            // 保存到localStorage
+            localStorage.setItem(SAVE_KEY_PREFIX + slot, JSON.stringify(saveData));
+            
+            // 更新存档槽位显示
+            initSaveSlots();
+            
+            alert(`✅ 存档成功！\n已保存到存档槽位 ${slot}`);
+        }
+        
+        // 加载游戏
+        function loadGame(slot) {
+            const saveData = localStorage.getItem(SAVE_KEY_PREFIX + slot);
+            
+            if (!saveData) {
+                alert('该存档槽位为空！');
+                return;
+            }
+            
+            try {
+                const data = JSON.parse(saveData);
+                
+                // 停止自动播放
+                stopAutoPlay();
+                
+                // 恢复地图数据
+                mapRooms = data.mapRooms || {};
+                kpMapText = data.kpMapText || "";
+                kpMapFound = data.kpMapFound || false;
+                
+                // 重新生成地图
+                generateMap();
+                
+                // 更新位置列表
+                locationList.innerHTML = '<h3>地图包含位置</h3>';
+                updateLocationList();
+                
+                // 如果当前没有加载Log，提示用户
+                if (allMessages.length === 0) {
+                    alert(`⚠️ 请先导入对应的Log文件：${data.logFileName || '未知Log'}\n导入后进度和角色位置将自动恢复`);
+                    // 保存要恢复的进度，等Log导入后自动恢复
+                    window.pendingRestoreData = data;
+                    return;
+                }
+                
+                // 恢复进度
+                currentIndex = data.currentIndex;
+                
+                // 恢复角色位置
+                if (data.characterPositions) {
+                    Object.keys(data.characterPositions).forEach(charName => {
+                        const charEl = document.getElementById(`map-char-${charName}`);
+                        if (charEl && data.characterPositions[charName]) {
+                            charEl.style.left = data.characterPositions[charName].left;
+                            charEl.style.top = data.characterPositions[charName].top;
+                        }
+                    });
+                }
+                
+                // 隐藏所有对话框
+                Object.keys(characters).forEach(name => {
+                    hideBubble(name);
+                });
+                
+                // 显示当前消息
+                if (currentIndex >= 0 && currentIndex < allMessages.length) {
+                    const msg = allMessages[currentIndex];
+                    showBubble(msg.name, msg.content);
+                    currentSpeaker.textContent = `${msg.name} 正在说话`;
+                }
+                
+                updateProgress();
+                
+                // 启用按钮
+                prevBtn.disabled = false;
+                nextBtn.disabled = false;
+                restartBtn.disabled = false;
+                autoPlayBtn.disabled = false;
+                saveBtn.disabled = false;
+                loadBtn.disabled = false;
+                progressInput.disabled = false;
+                
+                alert(`✅ 读档成功！\n已恢复到进度: ${currentIndex + 1}/${allMessages.length}`);
+                
+            } catch (error) {
+                alert('读档失败: ' + error.message);
+            }
+        }
+        
+        // 删除存档
+        function deleteSave(slot) {
+            if (confirm(`确定要删除存档槽位 ${slot} 吗？`)) {
+                localStorage.removeItem(SAVE_KEY_PREFIX + slot);
+                initSaveSlots();
+                alert('✅ 存档已删除！');
+            }
+        }
+        
+        // ========================================
+        // 基础功能代码
+        // ========================================
+        
+        // Log拖放事件
+        logDropZone.addEventListener('click', () => logInput.click());
+        logDropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            logDropZone.classList.add('active');
+        });
+        logDropZone.addEventListener('dragleave', () => {
+            logDropZone.classList.remove('active');
+        });
+        logDropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            logDropZone.classList.remove('active');
+            const file = e.dataTransfer.files[0];
+            if (file) handleLogFile(file);
+        });
+        logInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleLogFile(file);
+        });
+        
+        // 地图拖放事件
+        mapDropZone.addEventListener('click', () => mapInput.click());
+        mapDropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            mapDropZone.classList.add('active');
+        });
+        mapDropZone.addEventListener('dragleave', () => {
+            mapDropZone.classList.remove('active');
+        });
+        mapDropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            mapDropZone.classList.remove('active');
+            const file = e.dataTransfer.files[0];
+            if (file) handleMapFile(file);
+        });
+        mapInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleMapFile(file);
+        });
+        
+        // 处理Log文件
+        function handleLogFile(file) {
+            const fileName = file.name.toLowerCase();
+            currentLogFileName = file.name;
+            
+            if (fileName.endsWith('.docx')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const arrayBuffer = e.target.result;
+                    mammoth.extractRawText({ arrayBuffer: arrayBuffer })
+                        .then(function(result) {
+                            parseLog(result.value);
+                        })
+                        .catch(function(error) {
+                            alert('读取Log失败: ' + error.message);
+                        });
+                };
+                reader.readAsArrayBuffer(file);
+            } else if (fileName.endsWith('.txt')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    parseLog(e.target.result);
+                };
+                reader.readAsText(file, 'utf-8');
+            } else {
+                alert('不支持的Log格式！请上传.docx或.txt文件');
+            }
+        }
+        
+        // 处理地图文件
+        function handleMapFile(file) {
+            const fileName = file.name.toLowerCase();
+            
+            if (!fileName.endsWith('.cocmap')) {
+                alert('不支持的地图格式！请上传.cocmap文件');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const mapData = JSON.parse(e.target.result);
+                    
+                    if (!mapData.rooms || typeof mapData.rooms !== 'object') {
+                        throw new Error('无效的地图文件：缺少房间数据');
+                    }
+                    
+                    mapRooms = mapData.rooms;
+                    kpMapText = mapData.description || "导入的自定义地图";
+                    kpMapFound = true;
+                    
+                    generateMap();
+                    
+                    locationList.innerHTML = '<h3>地图包含位置</h3>';
+                    updateLocationList();
+                    
+                    if (allMessages.length > 0) {
+                        clearMapCharacters();
+                        createMapCharacters();
+                    }
+                    
+                    alert('✅ 地图导入成功！');
+                } catch (error) {
+                    alert('导入地图失败: ' + error.message);
+                }
+            };
+            reader.readAsText(file, 'utf-8');
+        }
+        
+        // 导出地图文件
+        function exportMapFile() {
+            document.querySelectorAll('.editor-room').forEach(roomDiv => {
+                const roomName = roomDiv.dataset.roomName;
+                const centerX = parseFloat(roomDiv.style.left);
+                const centerY = parseFloat(roomDiv.style.top);
+                const w = parseFloat(roomDiv.style.width);
+                const h = parseFloat(roomDiv.style.height);
+                
+                const leftX = centerX - w/2;
+                const topY = centerY - h/2;
+                
+                mapRooms[roomName] = [leftX, topY, w, h];
+            });
+            
+            const mapData = {
+                version: "1.0",
+                description: kpMapText,
+                rooms: mapRooms,
+                exportTime: new Date().toISOString()
+            };
+            
+            const jsonString = JSON.stringify(mapData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `模组地图_${new Date().getTime()}.cocmap`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            alert('✅ 地图导出成功！\n文件已保存到下载目录');
+        }
+        
+        // 智能解析KP的建筑图
+        function parseKPBuildingMap(lines, startIndex) {
+            const rooms = [];
+            let mapText = lines[startIndex].trim();
+            
+            for (let i = startIndex + 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                if (/^\d{2}:\d{2}:\d{2}\s+<[^>]+>:/.test(line)) break;
+                
+                mapText += '\n' + line;
+                let cleanLine = line.replace(/^(.+楼|.+层)\s*[:：]\s*/i, '');
+                const rawRooms = cleanLine.split(/\s+/);
+                let tempRoom = "";
+                
+                for (let j = 0; j < rawRooms.length; j++) {
+                    const word = rawRooms[j];
+                    if (/^\d+$/.test(word) && tempRoom === "房间") {
+                        rooms.push(tempRoom + word);
+                        tempRoom = "";
+                    } else if (tempRoom.startsWith("通向")) {
+                        tempRoom += " " + word;
+                        if (word.includes("楼梯")) {
+                            rooms.push(tempRoom);
+                            tempRoom = "";
+                        }
+                    } else if (word === "通向") {
+                        tempRoom = word;
+                    } else {
+                        if (tempRoom) rooms.push(tempRoom);
+                        tempRoom = word;
+                    }
+                }
+                
+                if (tempRoom) rooms.push(tempRoom);
+            }
+            
+            return { rooms, mapText };
+        }
+        
+        // 生成地图（完全保留用户设置的位置和大小）
+        function generateMap() {
+            autoMap.innerHTML = '';
+            
+            const roomNames = Object.keys(mapRooms);
+            
+            roomNames.forEach((roomName) => {
+                const [x, y, w, h] = mapRooms[roomName];
+                
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', x + '%');
+                rect.setAttribute('y', y + '%');
+                rect.setAttribute('width', w + '%');
+                rect.setAttribute('height', h + '%');
+                rect.setAttribute('class', 'map-room');
+                autoMap.appendChild(rect);
+                
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', x + w/2 + '%');
+                text.setAttribute('y', y + h/2 + '%');
+                text.setAttribute('class', 'map-room-name');
+                text.textContent = roomName;
+                autoMap.appendChild(text);
+            });
+            
+            mapInfo.style.display = 'block';
+            mapDescription.textContent = kpMapText.length > 150 ? kpMapText.substring(0, 150) + '...' : kpMapText;
+            
+            const hint = mapContainer.querySelector('.hint');
+            if (hint) hint.style.display = 'none';
+            
+            editMapBtn.disabled = false;
+        }
+        
+        // 生成初始自动排列的地图（仅在首次导入Log时使用）
+        function generateInitialAutoMap() {
+            autoMap.innerHTML = '';
+            
+            const roomNames = Object.keys(mapRooms);
+            const roomCount = roomNames.length;
+            
+            const cols = Math.ceil(Math.sqrt(roomCount));
+            const rows = Math.ceil(roomCount / cols);
+            const roomWidth = 80 / cols;
+            const roomHeight = 80 / rows;
+            const padding = 10;
+            
+            roomNames.forEach((roomName, index) => {
+                const col = index % cols;
+                const row = Math.floor(index / cols);
+                const x = padding + col * roomWidth;
+                const y = padding + row * roomHeight;
+                const w = roomWidth * 0.8;
+                const h = roomHeight * 0.8;
+                
+                mapRooms[roomName] = [x, y, w, h];
+                
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', x + '%');
+                rect.setAttribute('y', y + '%');
+                rect.setAttribute('width', w + '%');
+                rect.setAttribute('height', h + '%');
+                rect.setAttribute('class', 'map-room');
+                autoMap.appendChild(rect);
+                
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', x + w/2 + '%');
+                text.setAttribute('y', y + h/2 + '%');
+                text.setAttribute('class', 'map-room-name');
+                text.textContent = roomName;
+                autoMap.appendChild(text);
+            });
+            
+            mapInfo.style.display = 'block';
+            mapDescription.textContent = kpMapText.length > 150 ? kpMapText.substring(0, 150) + '...' : kpMapText;
+            
+            const hint = mapContainer.querySelector('.hint');
+            if (hint) hint.style.display = 'none';
+            
+            editMapBtn.disabled = false;
+        }
+        
+        // 解析Log核心函数
+        function parseLog(text) {
+            allMessages = [];
+            characters = {};
+            
+            if (!kpMapFound) {
+                mapRooms = {};
+                kpMapText = "";
+            }
+            
+            currentIndex = -1;
+            characterBubblePositions = {};
+            
+            clearMapCharacters();
+            locationList.innerHTML = '<h3>地图包含位置</h3>';
+            
+            if (!kpMapFound) {
+                const lines = text.split('\n');
+                
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    const match = line.match(/^\d{2}:\d{2}:\d{2}\s+<([^>]+)>:?\s*(.*)$/);
+                    
+                    if (match) {
+                        const name = match[1];
+                        const content = match[2].trim();
+                        
+                        const isKP = name.toLowerCase().includes('kp') || 
+                                    name.toLowerCase().includes('主持人') ||
+                                    name.toLowerCase().includes('dm') ||
+                                    name.toLowerCase().includes('爱丽丝');
+                        
+                        if (isKP) {
+                            for (const regex of mapTitleKeywords) {
+                                if (regex.test(content)) {
+                                    const mapResult = parseKPBuildingMap(lines, i);
+                                    mapResult.rooms.forEach(room => {
+                                        mapRooms[room] = [0, 0, 0, 0];
+                                    });
+                                    kpMapText = mapResult.mapText;
+                                    kpMapFound = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (kpMapFound) break;
+                }
+                
+                if (!kpMapFound || Object.keys(mapRooms).length === 0) {
+                    mapRooms = {
+                        "前台": [0, 0, 0, 0],
+                        "大厅": [0, 0, 0, 0],
+                        "房间1": [0, 0, 0, 0],
+                        "房间2": [0, 0, 0, 0],
+                        "房间3": [0, 0, 0, 0],
+                        "房间4": [0, 0, 0, 0]
+                    };
+                    kpMapText = "默认地图（未识别到KP的建筑图）";
+                }
+                
+                generateInitialAutoMap();
+            } else {
+                generateMap();
+            }
+            
+            updateLocationList();
+            
+            let colorIndex = 0;
+            const lines = text.split('\n');
+            
+            lines.forEach(line => {
+                const match = line.match(/^(\d{2}:\d{2}:\d{2})\s+<([^>]+)>:?\s*(.*)$/);
+                
+                if (match) {
+                    const time = match[1];
+                    const name = match[2];
+                    let content = match[3].trim();
+                    
+                    if (!content) return;
+                    
+                    if (!characters[name]) {
+                        characters[name] = {
+                            name: name,
+                            colorClass: characterColors[colorIndex % characterColors.length]
+                        };
+                        
+                        const bubblePositions = ['bubble-top', 'bubble-bottom', 'bubble-left', 'bubble-right'];
+                        characterBubblePositions[name] = bubblePositions[colorIndex % bubblePositions.length];
+                        
+                        colorIndex++;
+                    }
+                    
+                    allMessages.push({
+                        time: time,
+                        name: name,
+                        content: content,
+                        character: characters[name]
+                    });
+                }
+            });
+            
+            if (allMessages.length === 0) {
+                alert('没有解析到有效的跑团Log！请确保是QQ群导出的格式');
+                return;
+            }
+            
+            createMapCharacters();
+            
+            prevBtn.disabled = false;
+            nextBtn.disabled = false;
+            restartBtn.disabled = false;
+            autoPlayBtn.disabled = false;
+            saveBtn.disabled = false;
+            loadBtn.disabled = false;
+            progressInput.disabled = false;
+            progressInput.max = allMessages.length;
+            totalProgress.textContent = allMessages.length;
+            
+            updateProgress();
+            showNextMessage();
+            
+            // 检查是否有待恢复的存档数据
+            if (window.pendingRestoreData) {
+                const data = window.pendingRestoreData;
+                window.pendingRestoreData = null;
+                
+                setTimeout(() => {
+                    if (confirm(`检测到对应存档，是否恢复进度？\n进度: ${data.currentIndex + 1}/${data.totalMessages}`)) {
+                        // 恢复进度
+                        currentIndex = data.currentIndex;
+                        
+                        // 恢复角色位置
+                        if (data.characterPositions) {
+                            Object.keys(data.characterPositions).forEach(charName => {
+                                const charEl = document.getElementById(`map-char-${charName}`);
+                                if (charEl && data.characterPositions[charName]) {
+                                    charEl.style.left = data.characterPositions[charName].left;
+                                    charEl.style.top = data.characterPositions[charName].top;
+                                }
+                            });
+                        }
+                        
+                        // 隐藏所有对话框
+                        Object.keys(characters).forEach(name => {
+                            hideBubble(name);
+                        });
+                        
+                        // 显示当前消息
+                        if (currentIndex >= 0 && currentIndex < allMessages.length) {
+                            const msg = allMessages[currentIndex];
+                            showBubble(msg.name, msg.content);
+                            currentSpeaker.textContent = `${msg.name} 正在说话`;
+                        }
+                        
+                        updateProgress();
+                        alert('✅ 进度已自动恢复！');
+                    }
+                }, 500);
+            }
+        }
+        
+        // 更新位置列表
+        function updateLocationList() {
+            Object.keys(mapRooms).forEach(loc => {
+                const item = document.createElement('div');
+                item.className = 'location-item';
+                item.textContent = loc;
+                locationList.appendChild(item);
+            });
+        }
+        
+        // 在地图上创建角色
+        function createMapCharacters() {
+            const charArray = Object.values(characters);
+            const centerX = 50;
+            const centerY = 50;
+            const radius = 15;
+            
+            charArray.forEach((char, index) => {
+                const charEl = document.createElement('div');
+                charEl.className = 'map-character';
+                charEl.id = `map-char-${char.name}`;
+                
+                const bubble = document.createElement('div');
+                bubble.className = `map-speech-bubble ${char.colorClass} ${characterBubblePositions[char.name]}`;
+                bubble.id = `map-bubble-${char.name}`;
+                bubble.textContent = '等待对话...';
+                
+                const nameEl = document.createElement('div');
+                nameEl.className = `map-character-name ${char.colorClass}`;
+                nameEl.textContent = char.name;
+                
+                charEl.appendChild(bubble);
+                charEl.appendChild(nameEl);
+                
+                const angle = (index / charArray.length) * 2 * Math.PI;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+                
+                charEl.style.left = x + '%';
+                charEl.style.top = y + '%';
+                
+                addDragEvents(charEl, mapContainer);
+                
+                mapContainer.appendChild(charEl);
+            });
+        }
+        
+        // 清空地图上的角色
+        function clearMapCharacters() {
+            const chars = document.querySelectorAll('.map-character');
+            chars.forEach(char => char.remove());
+        }
+        
+        // 显示下一条消息
+        function showNextMessage() {
+            if (currentIndex >= allMessages.length - 1) {
+                if (isAutoPlaying) {
+                    stopAutoPlay();
+                }
+                return;
+            }
+            
+            if (currentIndex >= 0) {
+                const prevMsg = allMessages[currentIndex];
+                hideBubble(prevMsg.name);
+            }
+            
+            currentIndex++;
+            const msg = allMessages[currentIndex];
+            
+            showBubble(msg.name, msg.content);
+            currentSpeaker.textContent = `${msg.name} 正在说话`;
+            updateProgress();
+        }
+        
+        // 显示上一条消息
+        function showPrevMessage() {
+            if (currentIndex <= 0) return;
+            
+            const currMsg = allMessages[currentIndex];
+            hideBubble(currMsg.name);
+            
+            currentIndex--;
+            const msg = allMessages[currentIndex];
+            
+            showBubble(msg.name, msg.content);
+            currentSpeaker.textContent = `${msg.name} 正在说话`;
+            updateProgress();
+        }
+        
+        // 显示对话框
+        function showBubble(characterName, content) {
+            const bubble = document.getElementById(`map-bubble-${characterName}`);
+            const charEl = document.getElementById(`map-char-${characterName}`);
+            
+            if (bubble && charEl) {
+                bubble.textContent = content;
+                bubble.classList.add('active');
+                charEl.classList.add('active');
+            }
+        }
+        
+        // 隐藏对话框
+        function hideBubble(characterName) {
+            const bubble = document.getElementById(`map-bubble-${characterName}`);
+            const charEl = document.getElementById(`map-char-${characterName}`);
+            
+            if (bubble && charEl) {
+                bubble.classList.remove('active');
+                charEl.classList.remove('active');
+            }
+        }
+        
+        // 从头开始
+        function restart() {
+            stopAutoPlay();
+            
+            Object.keys(characters).forEach(name => {
+                hideBubble(name);
+            });
+            
+            const charArray = Object.values(characters);
+            const centerX = 50;
+            const centerY = 50;
+            const radius = 15;
+            
+            charArray.forEach((char, index) => {
+                const charEl = document.getElementById(`map-char-${char.name}`);
+                if (charEl) {
+                    const angle = (index / charArray.length) * 2 * Math.PI;
+                    const x = centerX + Math.cos(angle) * radius;
+                    const y = centerY + Math.sin(angle) * radius;
+                    
+                    charEl.style.left = x + '%';
+                    charEl.style.top = y + '%';
+                }
+            });
+            
+            currentSpeaker.textContent = '准备开始';
+            currentIndex = -1;
+            updateProgress();
+            showNextMessage();
+        }
+        
+        // 更新进度
+        function updateProgress() {
+            progressInput.value = currentIndex + 1;
+        }
+        
+        // ========================================
+        // 自动播放功能
+        // ========================================
+        function startAutoPlay() {
+            if (allMessages.length === 0) return;
+            
+            if (currentIndex >= allMessages.length - 1) {
+                restart();
+            }
+            
+            isAutoPlaying = true;
+            autoPlayBtn.textContent = '⏸️ 暂停播放';
+            autoPlayBtn.classList.add('playing');
+            
+            const speed = parseInt(speedSelect.value);
+            autoPlayInterval = setInterval(showNextMessage, speed);
+        }
+        
+        function stopAutoPlay() {
+            if (autoPlayInterval) {
+                clearInterval(autoPlayInterval);
+                autoPlayInterval = null;
+            }
+            
+            isAutoPlaying = false;
+            autoPlayBtn.textContent = '▶️ 自动播放';
+            autoPlayBtn.classList.remove('playing');
+        }
+        
+        function toggleAutoPlay() {
+            if (isAutoPlaying) {
+                stopAutoPlay();
+            } else {
+                startAutoPlay();
+            }
+        }
+        
+        // ========================================
+        // 地图编辑器核心代码 - 全面优化
+        // ========================================
+        
+        let selectedRoom = null;
+        let isResizing = false;
+        let resizeStartX = 0;
+        let resizeStartY = 0;
+        let roomStartWidth = 0;
+        let roomStartHeight = 0;
+        
+        function openMapEditor() {
+            mapEditorOverlay.style.display = 'flex';
+            
+            setTimeout(() => {
+                renderEditorRooms();
+                renderRoomList();
+                hideSizeControls();
+            }, 100);
+        }
+        
+        function closeMapEditor() {
+            mapEditorOverlay.style.display = 'none';
+            selectedRoom = null;
+            isResizing = false;
+            stopSizeAdjustment();
+            hideSizeControls();
+        }
+        
+        function renderEditorRooms() {
+            editorMapContainer.innerHTML = '';
+            
+            const roomNames = Object.keys(mapRooms);
+            
+            roomNames.forEach((roomName) => {
+                const [x, y, w, h] = mapRooms[roomName];
+                const centerX = x + w/2;
+                const centerY = y + h/2;
+                createSingleRoom(roomName, centerX, centerY, w, h);
+            });
+        }
+        
+        function createSingleRoom(roomName, x, y, w, h) {
+            const roomDiv = document.createElement('div');
+            roomDiv.className = 'editor-room';
+            roomDiv.dataset.roomName = roomName;
+            roomDiv.style.left = x + '%';
+            roomDiv.style.top = y + '%';
+            roomDiv.style.width = w + '%';
+            roomDiv.style.height = h + '%';
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'editor-room-name';
+            nameSpan.textContent = roomName;
+            roomDiv.appendChild(nameSpan);
+            
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = 'resize-handle';
+            roomDiv.appendChild(resizeHandle);
+            
+            // 添加拖动事件
+            addDragEvents(roomDiv, editorMapContainer);
+            
+            // 添加调整大小事件
+            resizeHandle.addEventListener('mousedown', startResize);
+            resizeHandle.addEventListener('touchstart', startResize, { passive: false });
+            
+            editorMapContainer.appendChild(roomDiv);
+        }
+        
+        function startResize(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const roomDiv = e.target.parentElement;
+            const roomName = roomDiv.dataset.roomName;
+            
+            selectRoom(roomName);
+            
+            isResizing = true;
+            resizeStartX = e.clientX || (e.touches && e.touches[0].clientX);
+            resizeStartY = e.clientY || (e.touches && e.touches[0].clientY);
+            const rect = roomDiv.getBoundingClientRect();
+            roomStartWidth = rect.width;
+            roomStartHeight = rect.height;
+            
+            document.addEventListener('mousemove', handleResize);
+            document.addEventListener('mouseup', endResize);
+            document.addEventListener('touchmove', handleResize, { passive: false });
+            document.addEventListener('touchend', endResize);
+            document.addEventListener('touchcancel', endResize);
+        }
+        
+        function handleResize(e) {
+            if (!isResizing || !selectedRoom) return;
+            e.preventDefault();
+            
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            
+            const deltaX = clientX - resizeStartX;
+            const deltaY = clientY - resizeStartY;
+            
+            let newWidth = roomStartWidth + deltaX;
+            let newHeight = roomStartHeight + deltaY;
+            
+            newWidth = Math.max(50, newWidth);
+            newHeight = Math.max(30, newHeight);
+            
+            const containerRect = editorMapContainer.getBoundingClientRect();
+            const widthPercent = (newWidth / containerRect.width) * 100;
+            const heightPercent = (newHeight / containerRect.height) * 100;
+            
+            selectedRoom.style.width = widthPercent + '%';
+            selectedRoom.style.height = heightPercent + '%';
+            
+            updateSizeInfo();
+            updateSizeButtonsState();
+        }
+        
+        function endResize() {
+            isResizing = false;
+            document.removeEventListener('mousemove', handleResize);
+            document.removeEventListener('mouseup', endResize);
+            document.removeEventListener('touchmove', handleResize);
+            document.removeEventListener('touchend', endResize);
+            document.removeEventListener('touchcancel', endResize);
+        }
+        
+        function renderRoomList() {
+            roomList.innerHTML = '';
+            
+            Object.keys(mapRooms).forEach(roomName => {
+                const item = document.createElement('div');
+                item.className = 'room-list-item';
+                item.dataset.roomName = roomName;
+                item.innerHTML = `
+                    <span>${roomName}</span>
+                    <div class="room-list-buttons">
+                        <button class="editor-btn edit-room-btn" data-room-name="${roomName}">✏️</button>
+                        <button class="editor-btn delete-room-btn" data-room-name="${roomName}">×</button>
+                    </div>
+                `;
+                
+                item.addEventListener('click', (e) => {
+                    if (!e.target.classList.contains('edit-room-btn') && !e.target.classList.contains('delete-room-btn')) {
+                        selectRoom(roomName);
+                    }
+                });
+                
+                item.querySelector('.edit-room-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    renameRoom(roomName);
+                });
+                
+                item.querySelector('.delete-room-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteRoom(roomName);
+                });
+                
+                roomList.appendChild(item);
+            });
+        }
+        
+        function selectRoom(roomName) {
+            document.querySelectorAll('.room-list-item.selected').forEach(el => {
+                el.classList.remove('selected');
+            });
+            document.querySelectorAll('.editor-room.selected').forEach(el => {
+                el.classList.remove('selected');
+            });
+            
+            const listItem = document.querySelector(`.room-list-item[data-room-name="${roomName}"]`);
+            if (listItem) listItem.classList.add('selected');
+            
+            const roomDiv = document.querySelector(`.editor-room[data-room-name="${roomName}"]`);
+            if (roomDiv) {
+                roomDiv.classList.add('selected');
+                selectedRoom = roomDiv;
+                showSizeControls();
+                updateSizeInfo();
+                updateSizeButtonsState();
+            }
+        }
+        
+        function addRoom() {
+            let newRoomName = "新房间";
+            let counter = 1;
+            while (mapRooms[newRoomName + counter]) {
+                counter++;
+            }
+            newRoomName += counter;
+            
+            mapRooms[newRoomName] = [45, 45, 10, 10];
+            createSingleRoom(newRoomName, 50, 50, 10, 10);
+            renderRoomList();
+            selectRoom(newRoomName);
+        }
+        
+        function deleteRoom(roomName) {
+            if (Object.keys(mapRooms).length <= 1) {
+                alert('至少保留一个房间！');
+                return;
+            }
+            
+            delete mapRooms[roomName];
+            const roomDiv = document.querySelector(`.editor-room[data-room-name="${roomName}"]`);
+            if (roomDiv) roomDiv.remove();
+            renderRoomList();
+            
+            if (selectedRoom && selectedRoom.dataset.roomName === roomName) {
+                selectedRoom = null;
+                hideSizeControls();
+            }
+        }
+        
+        function renameRoom(roomName) {
+            const newName = prompt('请输入新的房间名称：', roomName);
+            if (newName && newName.trim() && newName !== roomName) {
+                if (mapRooms[newName]) {
+                    alert('房间名称已存在！');
+                    return;
+                }
+                
+                mapRooms[newName] = mapRooms[roomName];
+                delete mapRooms[roomName];
+                
+                const roomDiv = document.querySelector(`.editor-room[data-room-name="${roomName}"]`);
+                if (roomDiv) {
+                    roomDiv.dataset.roomName = newName;
+                    roomDiv.querySelector('.editor-room-name').textContent = newName;
+                }
+                
+                renderRoomList();
+                selectRoom(newName);
+            }
+        }
+        
+        function saveMap() {
+            document.querySelectorAll('.editor-room').forEach(roomDiv => {
+                const roomName = roomDiv.dataset.roomName;
+                const centerX = parseFloat(roomDiv.style.left);
+                const centerY = parseFloat(roomDiv.style.top);
+                const w = parseFloat(roomDiv.style.width);
+                const h = parseFloat(roomDiv.style.height);
+                
+                const leftX = centerX - w/2;
+                const topY = centerY - h/2;
+                
+                mapRooms[roomName] = [leftX, topY, w, h];
+            });
+            
+            generateMap();
+            
+            locationList.innerHTML = '<h3>地图包含位置</h3>';
+            updateLocationList();
+            
+            closeMapEditor();
+            alert('✅ 地图已应用！');
+        }
+        
+        // ========================================
+        // 大小调整按钮功能
+        // ========================================
+        
+        function showSizeControls() {
+            sizeControls.style.display = 'flex';
+            sizeControls.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        
+        function hideSizeControls() {
+            sizeControls.style.display = 'none';
+            stopSizeAdjustment();
+        }
+        
+        function updateSizeInfo() {
+            if (!selectedRoom) return;
+            const width = parseFloat(selectedRoom.style.width).toFixed(1);
+            const height = parseFloat(selectedRoom.style.height).toFixed(1);
+            sizeInfo.textContent = `宽: ${width}% | 高: ${height}%`;
+        }
+        
+        function updateSizeButtonsState() {
+            if (!selectedRoom) {
+                increaseWidthBtn.disabled = true;
+                decreaseWidthBtn.disabled = true;
+                increaseHeightBtn.disabled = true;
+                decreaseHeightBtn.disabled = true;
+                return;
+            }
+            
+            const width = parseFloat(selectedRoom.style.width);
+            const height = parseFloat(selectedRoom.style.height);
+            
+            increaseWidthBtn.disabled = width >= MAX_SIZE;
+            decreaseWidthBtn.disabled = width <= MIN_SIZE;
+            increaseHeightBtn.disabled = height >= MAX_SIZE;
+            decreaseHeightBtn.disabled = height <= MIN_SIZE;
+        }
+        
+        function increaseRoomWidth() {
+            if (!selectedRoom) return;
+            let width = parseFloat(selectedRoom.style.width);
+            width = Math.min(width + SIZE_STEP, MAX_SIZE);
+            selectedRoom.style.width = width + '%';
+            updateSizeInfo();
+            updateSizeButtonsState();
+        }
+        
+        function decreaseRoomWidth() {
+            if (!selectedRoom) return;
+            let width = parseFloat(selectedRoom.style.width);
+            width = Math.max(width - SIZE_STEP, MIN_SIZE);
+            selectedRoom.style.width = width + '%';
+            updateSizeInfo();
+            updateSizeButtonsState();
+        }
+        
+        function increaseRoomHeight() {
+            if (!selectedRoom) return;
+            let height = parseFloat(selectedRoom.style.height);
+            height = Math.min(height + SIZE_STEP, MAX_SIZE);
+            selectedRoom.style.height = height + '%';
+            updateSizeInfo();
+            updateSizeButtonsState();
+        }
+        
+        function decreaseRoomHeight() {
+            if (!selectedRoom) return;
+            let height = parseFloat(selectedRoom.style.height);
+            height = Math.max(height - SIZE_STEP, MIN_SIZE);
+            selectedRoom.style.height = height + '%';
+            updateSizeInfo();
+            updateSizeButtonsState();
+        }
+        
+        function startSizeAdjustment(callback) {
+            callback();
+            sizeInterval = setInterval(callback, 100);
+        }
+        
+        function stopSizeAdjustment() {
+            if (sizeInterval) {
+                clearInterval(sizeInterval);
+                sizeInterval = null;
+            }
+        }
+        
+        // ========================================
+        // 事件绑定
+        // ========================================
+        
+        // 进度跳转事件
+        progressInput.addEventListener('change', () => {
+            const value = parseInt(progressInput.value);
+            if (!isNaN(value)) {
+                jumpToProgress(value);
+            }
+        });
+        
+        progressInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const value = parseInt(progressInput.value);
+                if (!isNaN(value)) {
+                    jumpToProgress(value);
+                }
+            }
+        });
+        
+        nextBtn.addEventListener('click', showNextMessage);
+        prevBtn.addEventListener('click', showPrevMessage);
+        restartBtn.addEventListener('click', restart);
+        autoPlayBtn.addEventListener('click', toggleAutoPlay);
+        speedSelect.addEventListener('change', () => {
+            if (isAutoPlaying) {
+                stopAutoPlay();
+                startAutoPlay();
+            }
+        });
+        
+        // 存档系统事件绑定
+        saveBtn.addEventListener('click', quickSave);
+        loadBtn.addEventListener('click', quickLoad);
+        
+        editMapBtn.addEventListener('click', openMapEditor);
+        closeEditorBtn.addEventListener('click', closeMapEditor);
+        addRoomBtn.addEventListener('click', addRoom);
+        exportMapBtn.addEventListener('click', exportMapFile);
+        saveMapBtn.addEventListener('click', saveMap);
+        
+        // 大小调整按钮事件
+        increaseWidthBtn.addEventListener('mousedown', () => {
+            startSizeAdjustment(increaseRoomWidth);
+        });
+        increaseWidthBtn.addEventListener('mouseup', stopSizeAdjustment);
+        increaseWidthBtn.addEventListener('mouseleave', stopSizeAdjustment);
+        
+        decreaseWidthBtn.addEventListener('mousedown', () => {
+            startSizeAdjustment(decreaseRoomWidth);
+        });
+        decreaseWidthBtn.addEventListener('mouseup', stopSizeAdjustment);
+        decreaseWidthBtn.addEventListener('mouseleave', stopSizeAdjustment);
+        
+        increaseHeightBtn.addEventListener('mousedown', () => {
+            startSizeAdjustment(increaseRoomHeight);
+        });
+        increaseHeightBtn.addEventListener('mouseup', stopSizeAdjustment);
+        increaseHeightBtn.addEventListener('mouseleave', stopSizeAdjustment);
+        
+        decreaseHeightBtn.addEventListener('mousedown', () => {
+            startSizeAdjustment(decreaseRoomHeight);
+        });
+        decreaseHeightBtn.addEventListener('touchend', stopSizeAdjustment);
+        decreaseHeightBtn.addEventListener('touchcancel', stopSizeAdjustment);
+        
+        // 移动端触摸事件支持
+        increaseWidthBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startSizeAdjustment(increaseRoomWidth);
+        });
+        increaseWidthBtn.addEventListener('touchend', stopSizeAdjustment);
+        increaseWidthBtn.addEventListener('touchcancel', stopSizeAdjustment);
+        
+        decreaseWidthBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startSizeAdjustment(decreaseRoomWidth);
+        });
+        decreaseWidthBtn.addEventListener('touchend', stopSizeAdjustment);
+        decreaseWidthBtn.addEventListener('touchcancel', stopSizeAdjustment);
+        
+        increaseHeightBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startSizeAdjustment(increaseRoomHeight);
+        });
+        increaseHeightBtn.addEventListener('touchend', stopSizeAdjustment);
+        increaseHeightBtn.addEventListener('touchcancel', stopSizeAdjustment);
+        
+        decreaseHeightBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startSizeAdjustment(decreaseRoomHeight);
+        });
+        decreaseHeightBtn.addEventListener('touchend', stopSizeAdjustment);
+        decreaseHeightBtn.addEventListener('touchcancel', stopSizeAdjustment);
+        
+        // 键盘快捷键
+        document.addEventListener('keydown', (e) => {
+            if (allMessages.length === 0) return;
+            
+            if (e.code === 'Space' || e.code === 'ArrowRight') {
+                e.preventDefault();
+                if (e.code === 'Space' && isAutoPlaying) {
+                    stopAutoPlay();
+                } else {
+                    showNextMessage();
+                }
+            } else if (e.code === 'ArrowLeft') {
+                e.preventDefault();
+                showPrevMessage();
+            }
+        });
+        
+        // 点击地图任意位置播放下一句
+        mapContainer.addEventListener('click', (e) => {
+            if (e.target === mapContainer || e.target === autoMap || 
+                e.target.tagName === 'rect' || e.target.tagName === 'text' || 
+                e.target.tagName === 'line') {
+                showNextMessage();
+            }
+        });
+        
+        // 点击编辑器外部关闭
+        mapEditorOverlay.addEventListener('click', (e) => {
+            if (e.target === mapEditorOverlay) {
+                closeMapEditor();
+            }
+        });
+        
+        // 点击编辑器空白处取消选中
+        editorMapContainer.addEventListener('click', (e) => {
+            if (e.target === editorMapContainer) {
+                document.querySelectorAll('.room-list-item.selected').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                document.querySelectorAll('.editor-room.selected').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                selectedRoom = null;
+                hideSizeControls();
+            }
+        });
+        
+        // 初始化存档槽位
+        initSaveSlots();
+    </script>
+</body>
+</html>

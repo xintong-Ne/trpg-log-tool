@@ -13,8 +13,9 @@ from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 
 
-HEADER_RE = re.compile(r"^.+\(\d+\) \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
-TIME_RE = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})$")
+HEADER_RE = re.compile(r"^\s*(?P<name>.+?)\s+(?P<time>(?:\d{4}-\d{2}-\d{2}\s+)?\d{2}:\d{2}:\d{2})\s*$")
+TIME_ONLY_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
+TRAILING_QQ_RE = re.compile(r"^(?P<name>.*?)\s*[\(（](?P<qq>\d+)[\)）]\s*$")
 
 @dataclass
 class SourceInput:
@@ -74,20 +75,29 @@ def decode_upload(uploaded_file) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def sortable_timestamp(value: str) -> tuple[int, int, int, int, int, int]:
+def sortable_timestamp(value: str, day_offset: int = 0) -> tuple[int, int, int, int, int, int]:
+    if TIME_ONLY_RE.match(value):
+        hour, minute, second = (int(part) for part in value.split(":"))
+        return (1970, 1, 1 + day_offset, hour, minute, second)
     return tuple(int(part) for part in re.split(r"[- :]", value))
 
 
 def parse_header(header: str) -> tuple[str, str, str]:
-    match = re.match(r"^(?P<name>.+)\((?P<qq>\d+)\) (?P<time>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})$", header)
+    match = HEADER_RE.match(header)
     if not match:
         raise ValueError(f"无法解析记录开头：{header}")
-    return match.group("name"), match.group("qq"), match.group("time")
+    name = re.sub(r"\s+", " ", match.group("name").strip())
+    qq = ""
+    qq_match = TRAILING_QQ_RE.match(name)
+    if qq_match:
+        name = re.sub(r"\s+", " ", qq_match.group("name").strip())
+        qq = qq_match.group("qq")
+    return name, qq, match.group("time")
 
 
 def format_record(name: str, qq: str, time_text: str, content: str, options: OutputOptions) -> str:
     header = name
-    if not options.remove_qq:
+    if qq and not options.remove_qq:
         header += f"({qq})"
     if not options.remove_time:
         header += f" {time_text}"
@@ -125,24 +135,30 @@ def read_records(raw: str, filename: str, file_index: int, options: OutputOption
         raise ValueError(f"{filename} 没有找到符合格式的聊天记录开头。")
 
     records = []
+    day_offset = 0
+    previous_time_key: tuple[int, int, int] | None = None
     for record_index, start in enumerate(starts):
         end = starts[record_index + 1] if record_index + 1 < len(starts) else len(lines)
         block_lines = lines[start:end]
         while block_lines and block_lines[-1] == "":
             block_lines.pop()
 
-        time_match = TIME_RE.search(block_lines[0])
-        if not time_match:
-            raise ValueError(f"{filename} 里有一条记录没有时间戳：{block_lines[0]}")
-
         name, qq, time_text = parse_header(block_lines[0])
+        if TIME_ONLY_RE.match(time_text):
+            time_key = tuple(int(part) for part in time_text.split(":"))
+            if previous_time_key is not None and time_key < previous_time_key:
+                day_offset += 1
+            previous_time_key = time_key
+        else:
+            previous_time_key = None
+        timestamp = sortable_timestamp(time_text, day_offset)
         content = "\n".join(block_lines[1:])
         if not should_keep_record(content, options):
             continue
 
         records.append(
             ChatRecord(
-                timestamp=sortable_timestamp(time_match.group(1)),
+                timestamp=timestamp,
                 file_index=file_index,
                 record_index=record_index,
                 filename=filename,
