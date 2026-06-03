@@ -353,13 +353,17 @@ def preview_records(
         st.info("这里会显示染色后的效果。")
         return
 
-    preview_limit = st.slider(
-        "预览数量",
-        min_value=20,
-        max_value=min(2000, len(items)),
-        value=min(200, len(items)),
-        step=20,
-    )
+    preview_max = min(2000, len(items))
+    if preview_max <= 20:
+        preview_limit = preview_max
+    else:
+        preview_limit = st.slider(
+            "预览数量",
+            min_value=20,
+            max_value=preview_max,
+            value=min(200, preview_max),
+            step=20,
+        )
     st.caption(f"当前显示前 {preview_limit} 项，共 {len(items)} 项。生成 docx 时会处理全部内容。")
 
     blocks = []
