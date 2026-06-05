@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import re
+import base64
 from html import escape
 from dataclasses import dataclass
 from io import BytesIO
+from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -24,6 +26,7 @@ COLON_INLINE_HEADER_RE = re.compile(rf"^\s*(?P<name>.+?)\s+(?P<time>{DATE_TIME_P
 DATE_ONLY_RE = re.compile(rf"^{DATE_PATTERN}$")
 TIME_ONLY_RE = re.compile(rf"^{TIME_PATTERN}$")
 TRAILING_QQ_RE = re.compile(r"^(?P<name>.*?)\s*[\(（](?P<qq>\d+)[\)）]\s*$")
+SUPPORT_IMAGE_NAME = "赞赏码.png"
 
 @dataclass
 class SourceInput:
@@ -233,6 +236,152 @@ def add_preserved_text(paragraph, text: str, font_color: str, size: Pt, italic: 
             paragraph.add_run().add_break()
         if part:
             add_styled_run(paragraph, part, font_color, size, italic)
+
+
+def find_support_image() -> Path | None:
+    app_dir = Path(__file__).resolve().parent
+    for path in (
+        app_dir / SUPPORT_IMAGE_NAME,
+        app_dir.parent / SUPPORT_IMAGE_NAME,
+        Path.cwd() / SUPPORT_IMAGE_NAME,
+    ):
+        if path.exists():
+            return path
+    return None
+
+
+def image_data_uri(path: Path) -> str:
+    suffix = path.suffix.lower()
+    mime_type = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }.get(suffix, "image/png")
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def render_support_rail() -> None:
+    support_image = find_support_image()
+    if support_image is None:
+        image_html = f"<div class=\"support-missing\">没有找到<br>{escape(SUPPORT_IMAGE_NAME)}</div>"
+    else:
+        image_html = f"<img src=\"{image_data_uri(support_image)}\" alt=\"赞赏码\">"
+    st.markdown(
+        f"""
+        <style>
+        .support-popover {{
+            position: fixed;
+            right: 12px;
+            top: 132px;
+            z-index: 1000;
+        }}
+        .support-popover summary {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            min-height: 128px;
+            padding: 10px 8px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px 0 0 8px;
+            background: rgba(255, 255, 255, 0.97);
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+            color: #111827;
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.2;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            letter-spacing: 0;
+            cursor: pointer;
+            user-select: none;
+            list-style: none;
+            box-sizing: border-box;
+        }}
+        .support-popover summary::-webkit-details-marker {{
+            display: none;
+        }}
+        .support-panel {{
+            display: none;
+            position: absolute;
+            right: 52px;
+            top: 0;
+            width: 286px;
+            padding: 16px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: 0 14px 36px rgba(15, 23, 42, 0.18);
+            text-align: center;
+            box-sizing: border-box;
+        }}
+        .support-popover[open] .support-panel {{
+            display: block;
+        }}
+        .support-panel img {{
+            display: block;
+            width: 230px;
+            height: 230px;
+            object-fit: contain;
+            margin: 0 auto 12px;
+        }}
+        .support-panel-title {{
+            margin-bottom: 10px;
+            color: #111827;
+            font-size: 16px;
+            font-weight: 700;
+        }}
+        .support-rail-text {{
+            color: #4b5563;
+            font-size: 13px;
+            line-height: 1.55;
+            text-align: left;
+        }}
+        .support-missing {{
+            color: #6b7280;
+            font-size: 13px;
+            line-height: 1.45;
+            word-break: break-all;
+            margin-bottom: 12px;
+        }}
+        @media (max-width: 900px) {{
+            .support-popover {{
+                position: static;
+                margin: 0 0 16px;
+            }}
+            .support-popover summary {{
+                width: 100%;
+                min-height: auto;
+                border-radius: 8px;
+                writing-mode: horizontal-tb;
+            }}
+            .support-panel {{
+                position: static;
+                width: 100%;
+                margin-top: 8px;
+            }}
+            .support-rail-text {{
+                text-align: center;
+            }}
+        }}
+        </style>
+        <details class="support-popover">
+            <summary>支持一下？</summary>
+            <div class="support-panel">
+                <div class="support-panel-title">支持一下？</div>
+                {image_html}
+                <div class="support-rail-text">
+                    本工具完全免费使用，但如果它帮到了你，可以小小支持一下 ξ( ✿＞◡❛) <br>
+                    打赏完全自愿，不影响任何功能。
+                </div>
+            </div>
+        </details>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def add_heading(document: Document, title: str) -> None:
@@ -450,6 +599,7 @@ def preview_records(
 
 def main() -> None:
     st.set_page_config(page_title="跑团 Log 整理工具", page_icon="📄", layout="wide")
+    render_support_rail()
     st.markdown(
         """
         <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:0.5rem;">
