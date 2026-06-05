@@ -274,8 +274,8 @@ def render_support_rail() -> None:
         <style>
         .support-popover {{
             position: fixed;
-            right: 12px;
-            top: 132px;
+            left: 12px;
+            top: 84px;
             z-index: 1000;
         }}
         .support-popover summary {{
@@ -286,7 +286,7 @@ def render_support_rail() -> None:
             min-height: 128px;
             padding: 10px 8px;
             border: 1px solid #e5e7eb;
-            border-radius: 8px 0 0 8px;
+            border-radius: 0 8px 8px 0;
             background: rgba(255, 255, 255, 0.97);
             box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
             color: #111827;
@@ -307,7 +307,7 @@ def render_support_rail() -> None:
         .support-panel {{
             display: none;
             position: absolute;
-            right: 52px;
+            left: 52px;
             top: 0;
             width: 286px;
             padding: 16px;
