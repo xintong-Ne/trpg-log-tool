@@ -26,6 +26,7 @@ COLON_INLINE_HEADER_RE = re.compile(rf"^\s*(?P<name>.+?)\s+(?P<time>{DATE_TIME_P
 DATE_ONLY_RE = re.compile(rf"^{DATE_PATTERN}$")
 TIME_ONLY_RE = re.compile(rf"^{TIME_PATTERN}$")
 TRAILING_QQ_RE = re.compile(r"^(?P<name>.*?)\s*[\(（](?P<qq>\d+)[\)）]\s*$")
+INVALID_XML_CHAR_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\uD800-\uDFFF\uFFFE\uFFFF]")
 SUPPORT_IMAGE_NAME = "赞赏码.png"
 
 @dataclass
@@ -221,6 +222,9 @@ def is_bracket_record(record: ChatRecord) -> bool:
 
 
 def add_styled_run(paragraph, text: str, color: str, size: Pt, italic: bool) -> None:
+    text = INVALID_XML_CHAR_RE.sub("", text)
+    if not text:
+        return
     run = paragraph.add_run(text)
     run.font.name = "SimSun"
     run._element.rPr.rFonts.set(qn("w:eastAsia"), "SimSun")
@@ -385,6 +389,7 @@ def render_support_rail() -> None:
 
 
 def add_heading(document: Document, title: str) -> None:
+    title = INVALID_XML_CHAR_RE.sub("", title)
     if not title:
         add_white_spacer(document)
         return
