@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import re
 import base64
+from bisect import bisect_left, bisect_right
 from html import escape
 from dataclasses import dataclass
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -274,118 +276,13 @@ def render_support_rail() -> None:
     else:
         image_html = f"<img src=\"{image_data_uri(support_image)}\" alt=\"赞赏码\">"
     st.markdown(
-        f"""
-        <style>
-        .support-popover {{
-            position: fixed;
-            left: 12px;
-            top: 84px;
-            z-index: 1000;
-        }}
-        .support-popover summary {{
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 42px;
-            min-height: 128px;
-            padding: 10px 8px;
-            border: 1px solid #e5e7eb;
-            border-radius: 0 8px 8px 0;
-            background: rgba(255, 255, 255, 0.97);
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
-            color: #111827;
-            font-size: 14px;
-            font-weight: 700;
-            line-height: 1.2;
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            letter-spacing: 0;
-            cursor: pointer;
-            user-select: none;
-            list-style: none;
-            box-sizing: border-box;
-        }}
-        .support-popover summary::-webkit-details-marker {{
-            display: none;
-        }}
-        .support-panel {{
-            display: none;
-            position: absolute;
-            left: 52px;
-            top: 0;
-            width: 286px;
-            padding: 16px;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.98);
-            box-shadow: 0 14px 36px rgba(15, 23, 42, 0.18);
-            text-align: center;
-            box-sizing: border-box;
-        }}
-        .support-popover[open] .support-panel {{
-            display: block;
-        }}
-        .support-panel img {{
-            display: block;
-            width: 230px;
-            height: 230px;
-            object-fit: contain;
-            margin: 0 auto 12px;
-        }}
-        .support-panel-title {{
-            margin-bottom: 10px;
-            color: #111827;
-            font-size: 16px;
-            font-weight: 700;
-        }}
-        .support-rail-text {{
-            color: #4b5563;
-            font-size: 13px;
-            line-height: 1.55;
-            text-align: left;
-        }}
-        .support-missing {{
-            color: #6b7280;
-            font-size: 13px;
-            line-height: 1.45;
-            word-break: break-all;
-            margin-bottom: 12px;
-        }}
-        @media (max-width: 900px) {{
-            .support-popover {{
-                position: static;
-                margin: 0 0 16px;
-            }}
-            .support-popover summary {{
-                width: 100%;
-                min-height: auto;
-                border-radius: 8px;
-                writing-mode: horizontal-tb;
-            }}
-            .support-panel {{
-                position: static;
-                width: 100%;
-                margin-top: 8px;
-            }}
-            .support-rail-text {{
-                text-align: center;
-            }}
-        }}
-        </style>
-        <details class="support-popover">
-            <summary>支持一下？</summary>
-            <div class="support-panel">
-                <div class="support-panel-title">支持一下？</div>
-                {image_html}
-                <div class="support-rail-text">
-                    本工具完全免费使用，但如果它帮到了你，可以小小支持一下 ξ( ✿＞◡❛) <br>
-                    打赏完全自愿，不影响任何功能。
-                </div>
-            </div>
-        </details>
-        """,
-        unsafe_allow_html=True,
+        f'''<details class="support-popover">
+        <summary>支持一下</summary>
+        <div class="support-panel">{image_html}
+        <p>赞赏全凭自愿，不影响任何功能。</p></div>
+        </details>''', unsafe_allow_html=True,
     )
+
 
 
 def add_heading(document: Document, title: str) -> None:
@@ -471,6 +368,109 @@ def collect_records(sources: list[SourceInput], options: OutputOptions) -> list[
     return records
 
 
+def group_record_ranges(
+    records: list[ChatRecord], ranges: list[tuple[int, int]],
+) -> list[ChatRecord]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if not 0 <= start <= end < len(records):
+            raise ValueError("区间的起始记录必须不晚于结束记录，且两端都必须存在。")
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+
+    output: list[ChatRecord] = []
+    cursor = 0
+    for start, end in merged:
+        output.extend(records[cursor:start])
+        output.extend(sorted(records[start:end + 1], key=lambda record: record.file_index))
+        cursor = end + 1
+    output.extend(records[cursor:])
+    return output
+
+
+def group_time_ranges(
+    records: list[ChatRecord],
+    ranges: list[tuple[tuple[int, ...], tuple[int, ...]]],
+) -> list[ChatRecord]:
+    timestamps = [record.timestamp for record in records]
+    record_ranges = []
+    for start, end in ranges:
+        if start > end:
+            raise ValueError("区间的结束时间不能早于起始时间。")
+        first, last = bisect_left(timestamps, start), bisect_right(timestamps, end) - 1
+        if first <= last:
+            record_ranges.append((first, last))
+    return group_record_ranges(records, record_ranges)
+
+
+def parse_range_time(parts: list[str]) -> tuple[int, int, int, int, int, int] | None:
+    parts = [part.strip() for part in parts]
+    if not all(parts[:4]):
+        return None
+    parts = [*parts[:4], parts[4] or "0", parts[5] or "0"]
+    if any(not part.isascii() or not part.isdecimal() for part in parts):
+        raise ValueError("年月日时分秒请填写整数。")
+    values = tuple(int(part) for part in parts)
+    try:
+        datetime(*values)
+    except ValueError as exc:
+        raise ValueError("日期或时间无效，请检查年月日、小时（0–23）、分秒（0–59）。") from exc
+    return values
+
+
+def render_range_time(label: str, key: str) -> tuple[int, int, int, int, int, int] | None:
+    st.markdown(label)
+    columns = st.columns([1.4, 1, 1, 1, 1, 1])
+    parts = [
+        column.text_input(field, key=f"{key}-{index}", placeholder="00（可空）" if index >= 4 else field)
+        for index, (column, field) in enumerate(zip(columns, ("年", "月", "日", "时", "分", "秒")))
+    ]
+    try:
+        return parse_range_time(parts)
+    except ValueError as exc:
+        st.warning(f"{label}：{exc}")
+        return None
+
+
+def render_record_ranges(records: list[ChatRecord], sources: list[SourceInput]) -> tuple[list[ChatRecord], bool]:
+    st.subheader("不要把我的分线打成糊糊")
+    st.markdown('<p class="range-help">输入起始和结束时间后，该时间范围（含两端时刻的全部记录）内按导入文件的顺序分别成块，每个文件内保留时间顺序；区间外仍按时间排列。重叠区间自动合并。更换来源内容后区间会重置。</p>', unsafe_allow_html=True)
+    source_signature = [(source.name, source.raw) for source in sources]
+    if st.session_state.get("range_sources") != source_signature:
+        st.session_state.range_sources = source_signature
+        st.session_state.record_ranges = []
+        for key in list(st.session_state):
+            if key.startswith(("range-start-", "range-end-")):
+                del st.session_state[key]
+    if st.button("添加区间", disabled=not records):
+        next_id = st.session_state.get("next_range_id", 0)
+        st.session_state.record_ranges.append(next_id)
+        st.session_state.next_range_id = next_id + 1
+
+    ranges = []
+    valid = True
+    for number, range_id in enumerate(st.session_state.record_ranges, 1):
+        st.markdown(f"**区间 {number}**")
+        start = render_range_time("起始时间", f"range-start-{range_id}")
+        end = render_range_time("结束时间", f"range-end-{range_id}")
+        if st.button("删除此区间", key=f"remove-range-{range_id}"):
+            st.session_state.record_ranges.remove(range_id)
+            st.rerun()
+        if start is None or end is None:
+            st.warning(f"请补全区间 {number} 的起始和结束时间，或删除此区间。")
+            valid = False
+        elif start > end:
+            st.warning(f"区间 {number} 的结束时间早于起始时间，请重新输入。")
+            valid = False
+        else:
+            ranges.append((start, end))
+    if not valid:
+        st.caption("区间设置未完成，预览暂按时间排列，完成设置后即可导出。")
+    return (group_time_ranges(records, ranges) if valid else records), valid
+
+
 def build_output_items(
     records: list[ChatRecord],
     options: OutputOptions,
@@ -502,9 +502,11 @@ def preview_records(
     speaker_settings: dict[str, SpeakerSettings],
     options: OutputOptions,
 ) -> None:
-    st.subheader("预览")
+    st.markdown('''<details class="usage-details"><summary>格式与预览说明</summary>
+    <p>按文件分段时，小标题留空会插入白色空行；排序后每次切换来源都会显示小标题。</p>
+    <p>预览最多显示 2000 项，可调整显示数量；导出包含全部保留的内容。</p>
+    </details>''', unsafe_allow_html=True)
     if not items:
-        st.info("这里会显示染色后的效果。")
         return
 
     preview_max = min(2000, len(items))
@@ -518,7 +520,7 @@ def preview_records(
             value=min(200, preview_max),
             step=20,
         )
-    st.caption(f"当前显示前 {preview_limit} 项，共 {len(items)} 项。生成 docx 时会处理全部内容。")
+
 
     blocks = []
     for item in items[:preview_limit]:
@@ -561,11 +563,12 @@ def preview_records(
             background: #ffffff;
         }}
         .preview-box {{
-            border: 1px solid #d9dde3;
+            border: 1px solid #CEDAE7;
+            border-top: 3px solid #BB3545;
             background: #ffffff;
             height: 800px;
             overflow-y: auto;
-            padding: 12px;
+            padding: 28px;
             box-sizing: border-box;
         }}
         .preview-record {{
@@ -603,18 +606,18 @@ def preview_records(
 
 
 def main() -> None:
-    st.set_page_config(page_title="跑团 Log 整理工具", page_icon="📄", layout="wide")
+    st.set_page_config(page_title="橘猫跑团log整理器", page_icon="📄", layout="wide")
+    st.markdown("<style>" + Path(__file__).with_name("interface.css").read_text() + "</style>", unsafe_allow_html=True)
+    st.markdown('<header class="title-bar"><h1>橘猫跑团log整理器</h1></header>', unsafe_allow_html=True)
     render_support_rail()
-    st.markdown(
-        """
-        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:0.5rem;">
-            <h1 style="margin:0;">跑团 Log 整理工具</h1>
-            <span style="font-size:0.9rem;color:#6b7280;">by 仿生橘猫</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+    with st.container(key="intro"), st.expander("使用说明", expanded=False):
+        st.markdown('''<div class="archive-hero">
+        <p>1. 上传 TXT 文件或粘贴记录，可添加多个来源。</p>
+        <p>2. 设置过滤规则、人物显示名、文字颜色和文件底色。</p>
+        <p>3. 检查预览，点击「生成 Word 文档」，再下载 DOCX。</p>
+        <p class="author-credit">作者：仿生橘猫</p></div>''', unsafe_allow_html=True)
+        notice = st.empty()
+    st.subheader("导入记录")
     input_mode = st.radio("记录来源", ["上传 txt 文件", "粘贴记录"], horizontal=True)
     sources: list[SourceInput] = []
 
@@ -636,18 +639,18 @@ def main() -> None:
                     sources.append(SourceInput(name.strip() or f"粘贴记录 {index + 1}", raw))
 
     if not sources:
-        st.info("上传 txt 文件，或者粘贴一份记录后，就可以设置颜色并生成 docx。")
+        notice.info("请先上传 TXT 文件或粘贴记录。")
         return
 
-    settings_col, preview_col = st.columns([0.75, 1], gap="large")
+    settings_col, preview_col = st.columns([1, 1.25], gap="large")
 
     records: list[ChatRecord] = []
     items: list[ChatRecord | HeadingItem] = []
     file_fill_colors: dict[str, str] = {}
     file_heading_titles: dict[str, str] = {}
     speaker_settings: dict[str, SpeakerSettings] = {}
-    with settings_col:
-        st.subheader("输出选项")
+    with settings_col, st.container(height=900, border=False, key="settings-scroll"):
+        st.subheader("整理设置")
         option_cols = st.columns(2)
         options = OutputOptions(
             remove_qq=option_cols[0].checkbox("去除 QQ 号", value=True),
@@ -663,7 +666,7 @@ def main() -> None:
         try:
             records = collect_records(sources, options)
         except Exception as exc:
-            st.error(str(exc))
+            notice.error(str(exc))
             return
 
         st.subheader("文件底色")
@@ -679,7 +682,6 @@ def main() -> None:
 
         if options.add_file_headings:
             st.subheader("文件分段小标题")
-            st.caption("留空时会插入一个白色空行。小标题会在排序后每次切换来源时出现。")
             for index, source in enumerate(sources):
                 file_heading_titles[source.name] = st.text_input(
                     f"{source.name} 的小标题",
@@ -690,7 +692,7 @@ def main() -> None:
         st.subheader("人物设置")
         speaker_names = sorted({record.name for record in records})
         if not speaker_names:
-            st.info("当前选项过滤后没有可输出的记录。")
+            notice.info("当前选项过滤后没有可输出的记录。")
         for index, speaker_name in enumerate(speaker_names):
             cols = st.columns([2.1, 2.1, 1, 1.6])
             cols[0].markdown(f"**{speaker_name}**")
@@ -711,20 +713,22 @@ def main() -> None:
             )
             speaker_settings[speaker_name] = SpeakerSettings(display_name, text_color, delete)
 
-        items = build_output_items(records, options, file_heading_titles, speaker_settings)
+        ordered_records, ranges_valid = render_record_ranges(records, sources)
+        items = build_output_items(ordered_records, options, file_heading_titles, speaker_settings)
 
+        st.subheader("导出文档")
         output_name = st.text_input("输出文件名", value="合并log.docx")
         if not output_name.lower().endswith(".docx"):
             output_name = f"{output_name}.docx"
 
-        if st.button("生成 docx", type="primary"):
+        if st.button("生成 Word 文档", type="primary", use_container_width=True, disabled=not ranges_valid):
             try:
                 docx_file = build_docx(items, file_fill_colors, speaker_settings, options)
             except Exception as exc:
-                st.error(str(exc))
+                notice.error(str(exc))
                 return
 
-            st.success(f"已合并 {len(records)} 条记录。")
+            notice.success(f"文档已生成，请点击下方「下载 docx」。")
             st.download_button(
                 "下载 docx",
                 data=docx_file,
@@ -733,6 +737,14 @@ def main() -> None:
             )
 
     with preview_col:
+        st.subheader("文档预览")
+        record_count = sum(isinstance(item, ChatRecord) for item in items)
+        st.markdown(
+            f'<div class="record-stats"><span>来源：<strong>{len(sources)}</strong></span>'
+            f'<span>人物：<strong>{len(speaker_names)}</strong></span>'
+            f'<span>输出记录：<strong>{record_count}</strong></span></div>',
+            unsafe_allow_html=True,
+        )
         preview_records(items, file_fill_colors, speaker_settings, options)
 
 
